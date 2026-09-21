@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumina AI • Autonomous Website Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="top-nav">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <div class="brand-title-row">
+            <span class="brand-title">Lumina Studio</span>
+            <span class="badge-agent">AI Creator</span>
+          </div>
+          <span class="brand-subtitle">Autonomous Website Designer</span>
+        </div>
+      </div>
+
+      <!-- Center Device Switcher (Floating Segmented Pill) -->
+      <div class="device-switcher" id="deviceSwitcher">
+        <button class="device-btn active" data-device="desktop" title="Desktop View (Full Width)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="20" height="14" x="2" y="3" rx="2"/>
+            <line x1="8" x2="16" y1="21" y2="21"/>
+            <line x1="12" x2="12" y1="17" y2="21"/>
+          </svg>
+          <span>Desktop</span>
+        </button>
+        <button class="device-btn" data-device="tablet" title="Tablet View (768px)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="16" height="20" x="4" y="2" rx="2"/>
+            <line x1="12" x2="12.01" y1="18" y2="18"/>
+          </svg>
+          <span>Tablet</span>
+        </button>
+        <button class="device-btn" data-device="mobile" title="Mobile View (375px)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="14" height="20" x="5" y="2" rx="2"/>
+            <line x1="12" x2="12.01" y1="18" y2="18"/>
+          </svg>
+          <span>Mobile</span>
+        </button>
+      </div>
+
+      <!-- Top Nav Action Buttons -->
+      <div class="nav-actions">
+        <button class="nav-btn" id="btnRefreshPreview" title="Reload Live Canvas">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+          <span class="nav-btn-label">Refresh</span>
+        </button>
+        <a class="nav-btn" id="btnExternalPreview" href="#" target="_blank" title="Open Fullscreen Site">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h6v6"/>
+            <path d="M10 14 21 3"/>
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          </svg>
+          <span class="nav-btn-label">Open Live</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Workspace (Split View) -->
+    <main class="workspace">
+      <!-- LEFT SIDEBAR: Creation Studio, Quality & Export -->
+      <aside class="left-panel">
+        <!-- Panel Tabs with Icons -->
+        <div class="panel-tabs">
+          <button class="panel-tab active" data-tab="studio">
+            <span class="tab-icon">✨</span>
+            <span>Design Studio</span>
+          </button>
+          <button class="panel-tab" data-tab="audit">
+            <span class="tab-icon">⚡</span>
+            <span>Site Health & SEO</span>
+          </button>
+          <button class="panel-tab" data-tab="code">
+            <span class="tab-icon">💻</span>
+            <span>Export & Code</span>
+          </button>
+        </div>
+
+        <div class="panel-content">
+          <!-- TAB 1: STUDIO (Prompt & Autonomous Pipeline) -->
+          <div class="tab-pane active" id="pane-studio">
+            
+            <!-- Post-Generation Celebration Banner -->
+            <div class="choice-banner" id="postGenChoiceBanner">
+              <div class="choice-banner-header">
+                <div class="choice-icon-wrap">
+                  <span class="choice-icon">🎉</span>
+                </div>
+                <div class="choice-text">
+                  <h5>Your Website is Live & Ready!</h5>
+                  <p>Fine-tune with natural language edits, launch to a live URL, or start fresh.</p>
+                </div>
+              </div>
+              <div class="choice-buttons">
+                <button type="button" class="btn-choice active" id="btnChoiceModify">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  <span>Edit / Customize</span>
+                </button>
+                <button type="button" class="btn-choice" id="btnChoiceNew">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  <span>Create New Site</span>
+                </button>
+                <button type="button" class="btn-choice btn-deploy" id="btnChoiceDeploy">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+                    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+                    <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+                    <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+                  </svg>
+                  <span class="deploy-btn-text">Publish to Vercel (Live URL)</span>
+                  <span class="deploy-spinner hidden"></span>
+                </button>
+              </div>
+              <div class="deploy-status hidden" id="deployStatus"></div>
+            </div>
+
+            <!-- Active Mode Status Bar -->
+            <div class="mode-indicator" id="modeIndicator">
+              <div class="mode-badge" id="modeBadge">
+                <span class="mode-dot"></span>
+                <span id="modeText">Creation Studio</span>
+              </div>
+              <div class="target-site-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span id="activeSiteTarget" class="active-site-target">Project: site1</span>
+              </div>
+            </div>
+
+            <!-- Main Prompt Input Section -->
+            <div class="form-group prompt-group">
+              <div class="field-label-row">
+                <label for="promptInput" id="lblPromptInput">
+                  <span class="label-icon">🪄</span>
+                  <span>Describe Your Ideal Website</span>
+                </label>
+              </div>
+
+              <div class="textarea-container">
+                <textarea id="promptInput" rows="4" placeholder="Describe the website you want to build..."></textarea>
+                <div class="prompt-meta-hint">Press Generate to build layout, styling, and copy automatically.</div>
+              </div>
+            </div>
+
+            <!-- Collapsible Settings Accordion (Keeps UI clean for non-developers) -->
+            <details class="settings-accordion">
+              <summary class="settings-summary">
+                <div class="settings-summary-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>Project & Polish Settings</span>
+                </div>
+                <span class="settings-hint">Optional</span>
+              </summary>
+              <div class="settings-drawer-content">
+                <div class="form-row" id="siteConfigRow">
+                  <div class="form-group col">
+                    <label for="siteNameInput">Project Name</label>
+                    <div class="input-with-icon">
+                      <input type="text" id="siteNameInput" value="site1" placeholder="e.g. my-new-store" />
+                    </div>
+                  </div>
+                  <div class="form-group col" id="iterationsCol">
+                    <label for="maxIterationsInput">Design Polish Quality</label>
+                    <select id="maxIterationsInput">
+                      <option value="1">⚡ Fast Draft (1 Pass)</option>
+                      <option value="2" selected>⭐ Standard Polish (2 Passes)</option>
+                      <option value="3">💎 Deep Perfection (3 Passes)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-row" id="stackConfigRow" style="margin-top: 12px;">
+                  <div class="form-group col">
+                    <label for="stackSelect">Tech Stack</label>
+                    <select id="stackSelect">
+                      <option value="html-css-js">HTML + CSS + JS — Interactive site (buttons, forms, animations work)</option>
+                      <option value="html-tailwind">HTML + Tailwind CSS — Same as above, styled with modern "Tailwind" design system</option>
+                      <option value="react-cdn">React (Component-based) — Best for pages with lots of moving parts (tabs, live widgets)</option>
+                      <option value="react-tailwind-cdn" selected>React + Tailwind CSS — Component-based site with modern Tailwind styling</option>
+                    </select>
+                    <div class="prompt-meta-hint" id="stackHint">Interactive site with plain HTML, CSS and JavaScript.</div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <!-- Primary Generate Action Button -->
+            <button id="btnGenerate" class="btn-primary">
+              <span class="btn-glow"></span>
+              <span class="btn-content">
+                <svg class="sparkle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                </svg>
+                <span class="btn-text">Generate Website</span>
+                <span class="btn-spinner hidden"></span>
+              </span>
+            </button>
+
+            <!-- Autonomous Design Pipeline -->
+            <div class="agent-pipeline-card">
+              <div class="pipeline-header">
+                <div class="pipeline-header-title">
+                  <span class="pulse-dot"></span>
+                  <h4>Creation Stages</h4>
+                </div>
+                <span id="pipelineStatusBadge" class="status-pill idle">Idle</span>
+              </div>
+              <div class="pipeline-steps">
+                <div class="pipe-step" id="stepBuilder">
+                  <div class="pipe-dot">
+                    <span class="dot-inner"></span>
+                  </div>
+                  <div class="pipe-info">
+                    <span class="pipe-title">1. Layout & Architecture</span>
+                    <span class="pipe-sub" id="subBuilder">Ready to generate structure & copy</span>
+                  </div>
+                </div>
+                <div class="pipe-step" id="stepCritic">
+                  <div class="pipe-dot">
+                    <span class="dot-inner"></span>
+                  </div>
+                  <div class="pipe-info">
+                    <span class="pipe-title">2. Quality & SEO Inspection</span>
+                    <span class="pipe-sub" id="subCritic">Testing mobile layout & accessibility</span>
+                  </div>
+                </div>
+                <div class="pipe-step" id="stepFixer">
+                  <div class="pipe-dot">
+                    <span class="dot-inner"></span>
+                  </div>
+                  <div class="pipe-info">
+                    <span class="pipe-title">3. Automated Polishing</span>
+                    <span class="pipe-sub" id="subFixer">Refining visuals, contrast & styles</span>
+                  </div>
+                </div>
+                <div class="pipe-step hidden" id="stepModifier">
+                  <div class="pipe-dot">
+                    <span class="dot-inner"></span>
+                  </div>
+                  <div class="pipe-info">
+                    <span class="pipe-title">🎨 Custom Refinement</span>
+                    <span class="pipe-sub" id="subModifier">Applying targeted visual updates...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Design Activity Feed -->
+            <div class="live-activity-card">
+              <div class="activity-header">
+                <div class="activity-header-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                  <h4>Live Activity</h4>
+                </div>
+                <button id="btnClearLogs" class="btn-text-link">Clear</button>
+              </div>
+              <div class="activity-feed" id="activityFeed">
+                <div class="activity-item system">
+                  <span class="time">Ready</span>
+                  <span class="msg">Describe your dream website above and click Generate.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: AUDIT & SCORES -->
+          <div class="tab-pane" id="pane-audit">
+            <div class="scores-summary">
+              <div class="scores-header-row">
+                <div>
+                  <h4>Site Health & Optimization</h4>
+                  <p class="subtitle">Real-time audits for speed, accessibility, and Google SEO ranking.</p>
+                </div>
+              </div>
+
+              <div class="score-grid">
+                <div class="score-box" id="cardPerformance">
+                  <div class="score-circle-wrap">
+                    <div class="score-val" id="valPerf">--</div>
+                  </div>
+                  <div class="score-name">Performance</div>
+                  <div class="score-desc">Fast loading & asset delivery</div>
+                  <div class="score-bar"><div class="score-fill" id="barPerf" style="width: 0%"></div></div>
+                </div>
+                <div class="score-box" id="cardAccessibility">
+                  <div class="score-circle-wrap">
+                    <div class="score-val" id="valA11y">--</div>
+                  </div>
+                  <div class="score-name">Accessibility</div>
+                  <div class="score-desc">Inclusive fonts, colors & ARIA</div>
+                  <div class="score-bar"><div class="score-fill" id="barA11y" style="width: 0%"></div></div>
+                </div>
+                <div class="score-box" id="cardBestPractices">
+                  <div class="score-circle-wrap">
+                    <div class="score-val" id="valBP">--</div>
+                  </div>
+                  <div class="score-name">Best Practices</div>
+                  <div class="score-desc">Modern web security & code</div>
+                  <div class="score-bar"><div class="score-fill" id="barBP" style="width: 0%"></div></div>
+                </div>
+                <div class="score-box" id="cardSeo">
+                  <div class="score-circle-wrap">
+                    <div class="score-val" id="valSeo">--</div>
+                  </div>
+                  <div class="score-name">SEO & Search</div>
+                  <div class="score-desc">Meta tags & crawlability</div>
+                  <div class="score-bar"><div class="score-fill" id="barSeo" style="width: 0%"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="audit-issues-section">
+              <div class="issues-header-row">
+                <h4>AI Audit Findings & Resolutions</h4>
+                <span class="issues-badge">Automatic Repair</span>
+              </div>
+              <div id="issuesList" class="issues-list">
+                <div class="empty-state">
+                  <span class="empty-state-icon">🛡️</span>
+                  <p>No audits executed yet. Your site will be automatically scanned upon generation.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+                    <!-- TAB 3: CODE SOURCE (editable) -->
+          <div class="tab-pane" id="pane-code">
+            <div class="code-header-banner">
+              <div class="code-banner-text">
+                <h4>Production-Ready Code</h4>
+                <p>Edit the HTML below, then press Save &amp; Apply (or Ctrl+S) to update the live preview.</p>
+              </div>
+              <div class="code-actions">
+                <span id="codeSiteName" class="code-filename-badge">site1 / index.html</span>
+                <button id="btnResetCode" class="btn-copy" type="button" title="Discard unsaved edits">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                  </svg>
+                  <span>Reset</span>
+                </button>
+                <button id="btnCopyCode" class="btn-copy" type="button">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy Code</span>
+                </button>
+                <button id="btnSaveCode" class="btn-copy btn-save" type="button">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>Save &amp; Apply</span>
+                </button>
+              </div>
+            </div>
+            <textarea id="codeEditor" class="code-container code-editor" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="// Click Generate or select an existing site to view and edit its HTML code."></textarea>
+            <div id="codeStatus" class="code-status"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- RIGHT CANVAS: Live Interactive Preview Viewport -->
+      <section class="preview-panel">
+        <div class="preview-toolbar">
+          <div class="preview-url-bar">
+            <span class="url-badge">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>SECURE</span>
+            </span>
+            <input type="text" id="previewUrlDisplay" readonly value="http://localhost:3456/site1/" />
+          </div>
+          <div class="preview-status" id="previewStatus">
+            <span class="status-dot green"></span>
+            <span>Live Preview Active</span>
+          </div>
+        </div>
+
+        <div class="canvas-viewport" id="canvasViewport">
+          <div class="device-frame desktop" id="deviceFrame">
+            <!-- Sleek Browser Chrome Header -->
+            <div class="frame-bar">
+              <div class="frame-dots">
+                <span class="dot-close"></span>
+                <span class="dot-min"></span>
+                <span class="dot-max"></span>
+              </div>
+              <div class="frame-title" id="frameTitle">Generated Website Preview</div>
+              <div class="frame-meta-actions">
+                <span class="frame-live-indicator">LIVE</span>
+              </div>
+            </div>
+
+            <!-- Frame Body: holds live iframe + overlays -->
+            <div class="frame-body">
+              <!-- Live Iframe -->
+              <iframe id="previewIframe" title="Website Preview"></iframe>
+
+              <!-- IDLE OVERLAY: Welcome hero state -->
+              <div class="idle-overlay" id="idleOverlay">
+                <div class="idle-inner">
+                  <div class="idle-icon-wrap">
+                    <div class="idle-icon">✨</div>
+                    <div class="idle-glow"></div>
+                  </div>
+                  <h3>Your Dream Website Awaits</h3>
+                  <p>Describe your vision on the left or select a quick starter chip. Lumina will build, audit, and polish your website live.</p>
+                  <div class="idle-feature-cards">
+                    <div class="idle-feature-card">
+                      <span class="feature-emoji">🎨</span>
+                      <div class="feature-title">Modern Design</div>
+                      <div class="feature-desc">Responsive layouts, glassmorphism & typography</div>
+                    </div>
+                    <div class="idle-feature-card">
+                      <span class="feature-emoji">⚡</span>
+                      <div class="feature-title">Auto-Audited</div>
+                      <div class="feature-desc">Lighthouse speed, accessibility & SEO checks</div>
+                    </div>
+                    <div class="idle-feature-card">
+                      <span class="feature-emoji">🚀</span>
+                      <div class="feature-title">Instant Deploy</div>
+                      <div class="feature-desc">One-click live deployment to Vercel</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BUILD OVERLAY: shown during generation -->
+              <div class="build-overlay hidden" id="buildOverlay">
+                <div class="build-bg">
+                  <span class="blob blob1"></span>
+                  <span class="blob blob2"></span>
+                  <span class="blob blob3"></span>
+                </div>
+                <div class="build-overlay-inner">
+                  <div class="build-orb">
+                    <div class="orb-ring"></div>
+                    <div class="orb-ring orb-ring-2"></div>
+                    <div class="orb-core">✨</div>
+                  </div>
+                  <h3 class="build-headline" id="buildHeadline">Crafting Your Website</h3>
+                  <p class="build-status-text" id="buildStatusText">Designing layout and structure…</p>
+
+                  <div class="build-terminal">
+                    <div class="build-terminal-dot-row"><span></span><span></span><span></span></div>
+                    <div class="build-terminal-body" id="buildTerminalBody"></div>
+                  </div>
+
+                  <div class="build-progress-track">
+                    <div class="build-progress-step" data-key="plan">Plan</div>
+                    <div class="build-progress-step" data-key="markup">Structure</div>
+                    <div class="build-progress-step" data-key="style">Style</div>
+                    <div class="build-progress-step" data-key="polish">Polish</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- REFINE OVERLAY: shown during audit & patch -->
+              <div class="refine-overlay hidden" id="refineOverlay">
+                <div class="refine-scanline"></div>
+                <div class="refine-pill">
+                  <span class="refine-spinner"></span>
+                  <span id="refineText">Auditing & polishing website…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
