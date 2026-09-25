@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { GENERATED_SITES_DIR, getSiteDir } = require('../config/paths');
-const { injectIndexes } = require('./htmlMap');
+const { injectIndexes, htmlVersion } = require('./htmlMap');
 
 let server = null;
 let sseClients = [];
@@ -73,7 +73,8 @@ const INSPECTOR_SNIPPET = `
     window.parent.postMessage({
       type: 'lumina-select',
       idx: Number(t.getAttribute('data-lumina-idx')),
-      tag: t.tagName.toLowerCase()
+      tag: t.tagName.toLowerCase(),
+      version: '__LUMINA_VERSION__'
     }, '*');
   }, true);
 
@@ -93,7 +94,8 @@ const INSPECTOR_SNIPPET = `
 function injectLiveReloadScript(html) {
   // Number every element (preview only — stored/deployed HTML is untouched)
   const indexed = injectIndexes(html);
-  const snippets = LIVE_RELOAD_SNIPPET + INSPECTOR_SNIPPET;
+  const inspector = INSPECTOR_SNIPPET.replace('__LUMINA_VERSION__', htmlVersion(html));
+  const snippets = LIVE_RELOAD_SNIPPET + inspector;
 
   const bodyEnd = indexed.lastIndexOf('</body>');
   if (bodyEnd !== -1) {

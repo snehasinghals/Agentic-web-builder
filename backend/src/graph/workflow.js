@@ -22,6 +22,53 @@ function broadcastEvent(type, data) {
   }
 }
 
+function makeAbortError() {
+  const err = new Error('Aborted by user');
+  err.name = 'AbortError';
+  return err;
+}
+
+function abortableDelay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(makeAbortError());
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => { clearTimeout(timer); reject(makeAbortError()); };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function issueKey(issue) {
+  if (issue.auditId) return `audit:${issue.auditId}`;
+  if (issue.locatorId) return `vis:${issue.locatorId}`;
+  return `${issue.category}:${(issue.problem || '').toLowerCase().trim()}`;
+}
+
+function reconcileIssues(prevLedger, issues, runtimeErrors, iteration) {
+  const all = [
+    ...issues,
+    ...runtimeErrors.map(e => ({ category: 'runtime', problem: e, suggestion: '' }))
+  ];
+
+  const nextLedger = { ...prevLedger };
+  const seenKeys = new Set();
+
+  const labeled = all.map(issue => {
+    const key = issueKey(issue);
+    seenKeys.add(key);
+    const status = prevLedger[key] ? 'unresolved' : 'new';
+    nextLedger[key] = { ...issue, key, status, lastSeen: iteration };
+    return nextLedger[key];
+  });
+
+  Object.keys(prevLedger).forEach(key => {
+    if (!seenKeys.has(key) && prevLedger[key].status !== 'resolved') {
+      nextLedger[key] = { ...prevLedger[key], status: 'resolved', resolvedAt: iteration };
+    }
+  });
+
+  return { labeled, ledger: nextLedger };
+}
+
 // 1. Define the shared state schema
 const AgentState = Annotation.Root({
   prompt: Annotation(),
@@ -42,19 +89,25 @@ const AgentState = Annotation.Root({
     reducer: (curr, update) => (update !== undefined ? update : curr),
     default: () => 2
   }),
+  issueLedger: Annotation({
+    reducer: (curr, update) => (update !== undefined ? update : curr),
+    default: () => ({})
+  }),
   status: Annotation()
 });
 
 // 2. Node: Builder Agent
-async function builderNode(state) {
+async function builderNode(state, config) {
+  const signal = config?.signal;
+  if (signal?.aborted) throw makeAbortError();
+
   console.log(`\n======================================================`);
   console.log(`[LangGraph Node: Builder] Generating initial website (stack: ${state.stack})...`);
   console.log(`======================================================`);
 
   broadcastEvent('node_start', { node: 'builder', message: 'Generating initial website...' });
 
-  const result = await runBuilderAgent(state.siteName, state.prompt, state.stack);
-  const filePath = getSiteIndexPath(state.siteName);
+  const result = await runBuilderAgent(state.siteName, state.prompt, state.stack, signal);  const filePath = getSiteIndexPath(state.siteName);
 
   // Start live preview server without forcing a pop-up browser if UI is active
   const preview = await startPreview(state.siteName, false);
@@ -73,14 +126,19 @@ async function builderNode(state) {
   };
 }
 
+
+
 // 3. Node: Critic Agent
-async function criticNode(state) {
+async function criticNode(state, config) {
+  const signal = config?.signal;
+  if (signal?.aborted) throw makeAbortError();
+
   if (state.iteration > 0) {
     console.log(`[Pacing] Waiting 6 seconds for token quota to reset...`);
     broadcastEvent('pacing', { message: 'Waiting 6 seconds for token quota reset...' });
-    await new Promise(r => setTimeout(r, 6000));
+    await abortableDelay(6000, signal);
   } else {
-    await new Promise(r => setTimeout(r, 1000));
+    await abortableDelay(1000, signal);
   }
 
   console.log(`\n======================================================`);
@@ -94,24 +152,31 @@ async function criticNode(state) {
     message: `Auditing site (Loop ${state.iteration + 1}/${state.maxIterations})...`
   });
 
-  const criticResult = await runCriticAgent(state.siteName);
-  const scores = criticResult.report?.scores || {};
+  const criticResult = await runCriticAgent(state.siteName, signal);  const scores = criticResult.report?.scores || {};
   console.log(`[Critic Node] Audit scores:`, scores);
   if ((criticResult.report?.runtimeErrors || []).length > 0) {
     console.warn(`[Critic Node] Runtime errors found:`, criticResult.report.runtimeErrors);
   }
 
+    const { labeled, ledger } = reconcileIssues(
+    state.issueLedger,
+    criticResult.report?.issues || [],
+    criticResult.report?.runtimeErrors || [],
+    state.iteration + 1
+  );
+
   broadcastEvent('audit_scores', {
     scores,
-    issues: criticResult.report?.issues || [],
-    runtimeErrors: criticResult.report?.runtimeErrors || [],
+    issues: labeled,
     iteration: state.iteration + 1
   });
 
   return {
     report: criticResult.report,
+    issueLedger: ledger,
     status: 'critiqued'
   };
+
 }
 
 // 4. Conditional Edge: Router
@@ -157,7 +222,10 @@ function shouldContinue(state) {
 }
 
 // 5. Node: Fixer Agent
-async function fixerNode(state) {
+async function fixerNode(state, config) {
+  const signal = config?.signal;
+  if (signal?.aborted) throw makeAbortError();
+
   const nextIteration = (state.iteration || 0) + 1;
   console.log(`\n======================================================`);
   console.log(`[LangGraph Node: Fixer] Repairing site issues (Iteration ${nextIteration})...`);
@@ -172,8 +240,7 @@ async function fixerNode(state) {
   const issues = state.report?.issues || [];
   const runtimeErrors = state.report?.runtimeErrors || [];
 
-  await runFixerAgent(state.siteName, issues, runtimeErrors, state.stack);
-
+  await runFixerAgent(state.siteName, issues, runtimeErrors, state.stack, signal);
   // Trigger live preview reload so connected clients refresh
   triggerReload();
 
@@ -186,6 +253,38 @@ async function fixerNode(state) {
     iteration: nextIteration,
     status: 'fixed'
   };
+}
+
+function issueKey(issue) {
+  if (issue.auditId) return `audit:${issue.auditId}`;
+  if (issue.locatorId) return `vis:${issue.locatorId}`;
+  return `${issue.category}:${(issue.problem || '').toLowerCase().trim()}`;
+}
+
+function reconcileIssues(prevLedger, issues, runtimeErrors, iteration) {
+  const all = [
+    ...issues,
+    ...runtimeErrors.map(e => ({ category: 'runtime', problem: e, suggestion: '' }))
+  ];
+
+  const nextLedger = { ...prevLedger };
+  const seenKeys = new Set();
+
+  const labeled = all.map(issue => {
+    const key = issueKey(issue);
+    seenKeys.add(key);
+    const status = prevLedger[key] ? 'unresolved' : 'new';
+    nextLedger[key] = { ...issue, key, status, lastSeen: iteration };
+    return nextLedger[key];
+  });
+
+  Object.keys(prevLedger).forEach(key => {
+    if (!seenKeys.has(key) && prevLedger[key].status !== 'resolved') {
+      nextLedger[key] = { ...prevLedger[key], status: 'resolved', resolvedAt: iteration };
+    }
+  });
+
+  return { labeled: Object.values(nextLedger), ledger: nextLedger };
 }
 
 // 6. Build and Compile the Graph

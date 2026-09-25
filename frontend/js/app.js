@@ -7,37 +7,43 @@ const iterationsCol = document.getElementById('iterationsCol');
 const stackSelect = document.getElementById('stackSelect');
 const stackConfigRow = document.getElementById('stackConfigRow');
 const stackHint = document.getElementById('stackHint');
+const settingsAccordion = document.getElementById('settingsAccordion');
 const btnGenerate = document.getElementById('btnGenerate');
-const btnSpinner = btnGenerate.querySelector('.btn-spinner');
-const btnText = btnGenerate.querySelector('.btn-text');
 
 const postGenChoiceBanner = document.getElementById('postGenChoiceBanner');
+const btnCloseChoiceBanner = document.getElementById('btnCloseChoiceBanner');
 const btnChoiceModify = document.getElementById('btnChoiceModify');
 const btnChoiceNew = document.getElementById('btnChoiceNew');
+const btnChoicePublish = document.getElementById('btnChoicePublish');
+const btnNewSiteTop = document.getElementById('btnNewSiteTop');
 const btnChoiceDeploy = document.getElementById('btnChoiceDeploy');
 const deployStatus = document.getElementById('deployStatus');
+const btnRepublish = document.getElementById('btnRepublish');
+
+const deployModal = document.getElementById('deployModal');
+const deployStepList = document.getElementById('deployStepList');
+const deployUrlBox = document.getElementById('deployUrlBox');
+const deployUrlText = document.getElementById('deployUrlText');
+const btnOpenDeployUrl = document.getElementById('btnOpenDeployUrl');
+const btnCopyDeployUrl = document.getElementById('btnCopyDeployUrl');
+const btnDeployModalOk = document.getElementById('btnDeployModalOk');
+const deployErrorBox = document.getElementById('deployErrorBox');
+const deployErrorText = document.getElementById('deployErrorText');
+const btnRetryDeploy = document.getElementById('btnRetryDeploy');
+const btnCloseDeployError = document.getElementById('btnCloseDeployError');
+const btnCloseDeployModal = document.getElementById('btnCloseDeployModal');
+
 
 const modeBadge = document.getElementById('modeBadge');
 const modeText = document.getElementById('modeText');
 const activeSiteTarget = document.getElementById('activeSiteTarget');
 
 const pipelineStatusBadge = document.getElementById('pipelineStatusBadge');
-const stepBuilder = document.getElementById('stepBuilder');
-const subBuilder = document.getElementById('subBuilder');
-const stepCritic = document.getElementById('stepCritic');
-const subCritic = document.getElementById('subCritic');
-const stepFixer = document.getElementById('stepFixer');
-const subFixer = document.getElementById('subFixer');
-const stepModifier = document.getElementById('stepModifier');
-const subModifier = document.getElementById('subModifier');
-
-const activityFeed = document.getElementById('activityFeed');
-const btnClearLogs = document.getElementById('btnClearLogs');
+const aiThreadCard = document.getElementById('aiThreadCard');
+const aiThreadBody = document.getElementById('aiThreadBody');
 
 const previewIframe = document.getElementById('previewIframe');
-const previewUrlDisplay = document.getElementById('previewUrlDisplay');
-const btnRefreshPreview = document.getElementById('btnRefreshPreview');
-const btnExternalPreview = document.getElementById('btnExternalPreview');
+
 const deviceFrame = document.getElementById('deviceFrame');
 const frameTitle = document.getElementById('frameTitle');
 
@@ -78,6 +84,10 @@ const buildProgressSteps = document.querySelectorAll('.build-progress-step');
 const refineOverlay = document.getElementById('refineOverlay');
 const refineText = document.getElementById('refineText');
 
+const panelResizer = document.getElementById('panelResizer');
+const workspaceEl = document.querySelector('.workspace');
+const leftPanelEl = document.querySelector('.left-panel');
+
 let buildStatusInterval = null;
 let terminalTypeTimeout = null;
 
@@ -86,10 +96,35 @@ let currentSite = 'site1';
 let isGenerating = false;
 let appMode = 'create'; // 'create' | 'modify'
 let hasGeneratedOnce = false;
+let isStopped = false;
+
+// NEW: tracks whether the popup currently open must be resolved via a button
+let choiceBannerMandatory = false;
+
+let currentTurnEl = null;
+let currentTurnSteps = [];
+let currentTurnStartTime = null;
+
+// Tracks which "bubble" in the AI thread is currently the active step,
+// so audit_scores / site_reloaded events know which one to mark done.
+let currentCriticKey = null;
+let currentFixerKey = null;
+let currentModifierKey = null;
+let currentRunId = 0;
 
 // Code editor state
 let savedCode = '';     // last code loaded from / saved to the server
 let codeDirty = false;  // true when the editor has unsaved changes
+
+const DEPLOY_STEPS = [
+  { key: 'prepare', label: 'Preparing your website files' },
+  { key: 'upload',  label: 'Uploading to Vercel' },
+  { key: 'build',   label: 'Building & optimizing' },
+  { key: 'live',    label: 'Going live' }
+];
+let deployStepInterval = null;
+let liveSiteUrls = {}; // { [siteName]: url } — persists across the session
+
 
 // ---------------------------------------------------------------------------
 // Stack Selector — plain-language descriptions for non-developers
@@ -102,7 +137,7 @@ const STACK_DESCRIPTIONS = {
 };
 
 // ---------------------------------------------------------------------------
-// Engagement Overlay Content
+// Engagement Overlay Content (canvas overlays — unchanged)
 // ---------------------------------------------------------------------------
 const BUILD_STATUS_MESSAGES = [
   'Designing your layout…',
@@ -127,23 +162,50 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupDeviceSwitcher();
   setupChoiceBanner();
+  setupDeployModal();
   setupSSE();
   setupCodeEditor();
   setupStackSelector();
+  setupPromptEnterToSubmit();
+  setupPanelResizer(); // ADD THIS LINE
+  setupAppHeightFix(); // ADD THIS
+  setupDrawer();          // ADD THIS
 
-  // Show a friendly idle state instead of pointing the iframe at a
-  // not-yet-existing site. Real preview URL is only loaded into the
-  // iframe once the first generation actually completes.
   const initialSite = siteNameInput.value.trim() || 'site1';
   currentSite = initialSite;
   activeSiteTarget.textContent = `Project: ${initialSite}`;
   previewUrlDisplay.value = `http://localhost:3456/${initialSite}/`;
-  btnExternalPreview.href = previewUrlDisplay.value;
   frameTitle.textContent = `${initialSite} • Live Preview`;
   showIdleOverlay();
+  updateSettingsVisibility();
+  openDrawer();   // ADD THIS (does nothing on desktop)
+
 });
 
-// Stack Selector — update hint text as user picks a stack
+// ---------------------------------------------------------------------------
+// Fix: Chromium on Windows doesn't always recalc 100vh/100dvh immediately
+// after an OS-level window snap (split screen). We track the real height
+// ourselves and force layout to re-read it.
+// ---------------------------------------------------------------------------
+function setAppHeight() {
+  const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-height', `${h}px`);
+}
+
+function setupAppHeightFix() {
+  setAppHeight();
+
+  window.addEventListener('resize', setAppHeight);
+  window.addEventListener('orientationchange', () => {
+    // double rAF forces a fresh layout pass after the OS finishes resizing
+    requestAnimationFrame(() => requestAnimationFrame(setAppHeight));
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setAppHeight);
+  }
+}
+
 function setupStackSelector() {
   if (!stackSelect) return;
   stackSelect.addEventListener('change', () => {
@@ -151,7 +213,19 @@ function setupStackSelector() {
   });
 }
 
-// Tab Switcher
+function setupPromptEnterToSubmit() {
+  if (!promptInput) return;
+  promptInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!isGenerating) {
+        btnGenerate.click();
+      }
+    }
+  });
+}
+
+
 function setupTabs() {
   document.querySelectorAll('.panel-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -163,18 +237,15 @@ function setupTabs() {
       const targetPane = document.getElementById(targetId);
       if (targetPane) targetPane.classList.add('active');
 
-      // Don't overwrite the user's unsaved edits when switching tabs
       if (tab.dataset.tab === 'code' && !codeDirty && hasGeneratedOnce) {
         fetchSiteCode(currentSite);
       }
 
-      // Click-to-code is only active while the code tab is open
       syncInspectMode();
     });
   });
 }
 
-// Device Switcher
 function setupDeviceSwitcher() {
   document.querySelectorAll('.device-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -188,36 +259,233 @@ function setupDeviceSwitcher() {
   });
 }
 
-// Setup Post-Generation Choice Banner
+// ---------------------------------------------------------------------------
+// Draggable left panel resizer
+// ---------------------------------------------------------------------------
+const SIDEBAR_MIN_WIDTH = 320;
+const SIDEBAR_STORAGE_KEY = 'lumina-sidebar-width';
+const STACK_QUERY = window.matchMedia('(max-width: 700px)'); // keep same as CSS
+
+function isStackedLayout() {
+  return STACK_QUERY.matches;
+}
+
+function clampSidebarWidth(px) {
+  const maxAllowed = Math.min(window.innerWidth * 0.6, window.innerWidth - 360);
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(px, maxAllowed));
+}
+
+// Only set a CSS variable. Never touch grid-template-columns from JS.
+function applySidebarWidth(px) {
+  workspaceEl.style.setProperty('--sidebar-w', `${px}px`);
+}
+
+function resetSidebarWidth() {
+  workspaceEl.style.removeProperty('--sidebar-w');
+}
+
+window.addEventListener('resize', () => {
+  console.log('width:', window.innerWidth, 'stacked:', isStackedLayout());
+});
+function setupPanelResizer() {
+  if (!panelResizer || !workspaceEl || !leftPanelEl) return;
+
+  // Restore a previously saved width (desktop layout only)
+  const saved = parseInt(localStorage.getItem(SIDEBAR_STORAGE_KEY), 10);
+  if (saved && !isStackedLayout()) {
+    applySidebarWidth(clampSidebarWidth(saved));
+  }
+
+  let dragging = false;
+
+  function onPointerDown(e) {
+    if (isStackedLayout()) return; // no dragging on the stacked mobile layout
+    dragging = true;
+    panelResizer.classList.add('dragging');
+    document.body.classList.add('resizing-panels');
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const workspaceRect = workspaceEl.getBoundingClientRect();
+    applySidebarWidth(clampSidebarWidth(clientX - workspaceRect.left));
+  }
+
+  function onPointerUp() {
+    if (!dragging) return;
+    dragging = false;
+    panelResizer.classList.remove('dragging');
+    document.body.classList.remove('resizing-panels');
+    const currentWidth = Math.round(leftPanelEl.getBoundingClientRect().width);
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, currentWidth);
+  }
+
+  panelResizer.addEventListener('mousedown', onPointerDown);
+  panelResizer.addEventListener('touchstart', onPointerDown, { passive: false });
+  document.addEventListener('mousemove', onPointerMove);
+  document.addEventListener('touchmove', onPointerMove, { passive: false });
+  document.addEventListener('mouseup', onPointerUp);
+  document.addEventListener('touchend', onPointerUp);
+
+    // Double-click the divider to reset to the default width
+  panelResizer.addEventListener('dblclick', () => {
+    resetSidebarWidth();
+    localStorage.removeItem(SIDEBAR_STORAGE_KEY);
+  });
+
+  // Re-clamp on window resize (CSS ignores the variable in stacked mode)
+  window.addEventListener('resize', () => {
+    if (isStackedLayout()) return;
+    const savedNow = parseInt(localStorage.getItem(SIDEBAR_STORAGE_KEY), 10);
+    if (savedNow) applySidebarWidth(clampSidebarWidth(savedNow));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Drawer (narrow screens): left panel slides up over the preview
+// ---------------------------------------------------------------------------
+function openDrawer() {
+  if (!isStackedLayout()) return;
+  document.body.classList.add('drawer-open');
+}
+
+function closeDrawer() {
+  document.body.classList.remove('drawer-open');
+}
+
+function setupDrawer() {
+  const btnOpen = document.getElementById('btnChatToEdit');
+  const btnClose = document.getElementById('btnCloseDrawer');
+  const backdrop = document.getElementById('drawerBackdrop');
+
+  if (btnOpen) btnOpen.addEventListener('click', openDrawer);
+  if (btnClose) btnClose.addEventListener('click', closeDrawer);
+  if (backdrop) backdrop.addEventListener('click', closeDrawer);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !e.defaultPrevented) closeDrawer();
+  });
+
+  // Window grew back to desktop width -> reset the drawer state
+  STACK_QUERY.addEventListener('change', closeDrawer);
+}
+
+// ---------------------------------------------------------------------------
+// UPDATED: Show / hide the "Your website is generated" popup.
+// Supports a `mandatory` mode (no X button, no dismiss-by-clicking-outside)
+// and a `stopped` mode (reworded for an interrupted generation).
+// ---------------------------------------------------------------------------
+function openChoiceBanner(opts = {}) {
+  const titleEl = postGenChoiceBanner.querySelector('.choice-text h5');
+  const subEl = postGenChoiceBanner.querySelector('.choice-text p');
+
+  choiceBannerMandatory = !!opts.mandatory;
+
+  if (opts.stopped) {
+    titleEl.textContent = 'Generation Stopped';
+    subEl.textContent = 'Your partial website was saved. What would you like to do?';
+  } else {
+    titleEl.textContent = 'Your Website is Generated!';
+    subEl.textContent = choiceBannerMandatory
+      ? 'Please choose an option below to continue.'
+      : 'What would you like to do next?';
+  }
+
+  // Don't offer publishing an incomplete/stopped site.
+  if (btnChoicePublish) btnChoicePublish.style.display = opts.stopped ? 'none' : '';
+
+  // Hide the X entirely when a choice is required.
+  if (btnCloseChoiceBanner) btnCloseChoiceBanner.classList.toggle('hidden', choiceBannerMandatory);
+
+  postGenChoiceBanner.classList.toggle('mandatory', choiceBannerMandatory);
+  postGenChoiceBanner.classList.add('visible');
+}
+
+function closeChoiceBanner(force = false) {
+  if (choiceBannerMandatory && !force) return;
+  postGenChoiceBanner.classList.remove('visible');
+}
+
+function setPublishButtonVisible(visible) {
+  if (!btnChoiceDeploy) return;
+  btnChoiceDeploy.classList.toggle('hidden', !visible);
+  if (!visible && deployStatus) {
+    deployStatus.classList.add('hidden');
+    deployStatus.innerHTML = '';
+  }
+}
+
+// UPDATED: forces the banner closed since this is always a real choice
+function startNewWebsiteFlow() {
+  setMode('create');
+  closeChoiceBanner(true);
+}
+
+// UPDATED: real choices now force-close; backdrop/X clicks still route
+// through the guarded closeChoiceBanner() and will no-op when mandatory
 function setupChoiceBanner() {
   btnChoiceModify.addEventListener('click', () => {
     setMode('modify');
+    closeChoiceBanner(true);
   });
 
-  btnChoiceNew.addEventListener('click', () => {
-    setMode('create');
-  });
+  if (btnChoiceNew) {
+    btnChoiceNew.addEventListener('click', startNewWebsiteFlow);
+  }
 
-  if (btnChoiceDeploy) {
-    btnChoiceDeploy.addEventListener('click', () => {
+  if (btnChoicePublish) {
+    btnChoicePublish.addEventListener('click', () => {
+      closeChoiceBanner(true);
       deployCurrentSiteToVercel();
+    });
+  }
+
+  if (btnCloseChoiceBanner) {
+    btnCloseChoiceBanner.addEventListener('click', () => {
+      closeChoiceBanner(); // no-ops automatically if mandatory
+    });
+  }
+
+  postGenChoiceBanner.addEventListener('click', (e) => {
+    if (e.target === postGenChoiceBanner) closeChoiceBanner(); // same guard
+  });
+
+  if (btnNewSiteTop) {
+    btnNewSiteTop.addEventListener('click', startNewWebsiteFlow);
+  }
+
+    if (btnChoiceDeploy) {
+    btnChoiceDeploy.addEventListener('click', () => {
+      const liveUrl = liveSiteUrls[currentSite];
+      if (liveUrl) {
+        window.open(liveUrl, '_blank', 'noopener');
+      } else {
+        deployCurrentSiteToVercel();
+      }
     });
   }
 }
 
-// Switch between 'create' and 'modify' mode
+function setupDeployModal() {
+  btnDeployModalOk.addEventListener('click', closeDeployModal);
+  btnCloseDeployModal.addEventListener('click', closeDeployModal);
+  btnCloseDeployError.addEventListener('click', closeDeployModal);
+  btnRetryDeploy.addEventListener('click', deployCurrentSiteToVercel);
+  btnCopyDeployUrl.addEventListener('click', () => {
+    navigator.clipboard.writeText(deployUrlText.textContent);
+  });
+  if (btnRepublish) {
+    btnRepublish.addEventListener('click', () => deployCurrentSiteToVercel());
+  }
+}
+
+
 function setMode(mode) {
   appMode = mode;
 
-  if (deployStatus) {
-    deployStatus.classList.add('hidden');
-    deployStatus.innerHTML = '';
-  }
-
   if (mode === 'modify') {
-    btnChoiceModify.classList.add('active');
-    btnChoiceNew.classList.remove('active');
-
     modeBadge.className = 'mode-badge modify-mode';
     modeText.textContent = 'Edit Mode';
     activeSiteTarget.textContent = `Project: ${currentSite}`;
@@ -226,20 +494,16 @@ function setMode(mode) {
     promptInput.placeholder = 'Describe the changes you want to make...';
     promptInput.value = '';
 
-    btnText.textContent = 'Apply Changes';
+    btnGenerate.title = 'Apply Changes';
     iterationsCol.style.display = 'none';
     if (stackConfigRow) stackConfigRow.style.display = 'none';
 
-    showPipelineStep('modifier');
-    logActivity('system', `Switched to Edit Mode for "${currentSite}". Describe your changes above.`);
+    resetThread(`Switched to Edit Mode for "${currentSite}". Describe your changes above and hit Apply.`);
+    hideAiThreadCard();
   } else {
-    btnChoiceNew.classList.add('active');
-    btnChoiceModify.classList.remove('active');
-
     modeBadge.className = 'mode-badge';
     modeText.textContent = 'Creation Studio';
 
-    // Auto-suggest next site name e.g. site2
     if (currentSite.startsWith('site')) {
       const num = parseInt(currentSite.replace('site', ''), 10) || 1;
       siteNameInput.value = `site${num + 1}`;
@@ -253,85 +517,292 @@ function setMode(mode) {
     promptInput.placeholder = 'Describe the website you want to build...';
     promptInput.value = '';
 
-    btnText.textContent = 'Generate Website';
+    btnGenerate.title = 'Generate Website';
     iterationsCol.style.display = 'block';
     if (stackConfigRow) stackConfigRow.style.display = 'flex';
 
-    showPipelineStep('standard');
-    logActivity('system', `Starting fresh — new project "${currentSite}".`);
+    resetThread(`Starting fresh — new project "${currentSite}". Describe your dream website above.`);
+    hideAiThreadCard();
 
-    // Fresh site slot with nothing generated yet — bring back the idle state.
     hasGeneratedOnce = false;
     hideBuildOverlay();
     hideRefineOverlay();
     showIdleOverlay();
-    postGenChoiceBanner.classList.remove('visible');
+    setPublishButtonVisible(false);
+    resetLiveState();
   }
+
+  updateSettingsVisibility();
 }
 
-function showPipelineStep(type) {
-  if (type === 'modifier') {
-    stepBuilder.classList.add('hidden');
-    stepCritic.classList.add('hidden');
-    stepFixer.classList.add('hidden');
-    stepModifier.classList.remove('hidden');
-    subModifier.textContent = 'Ready to apply your custom edits...';
-  } else {
-    stepBuilder.classList.remove('hidden');
-    stepCritic.classList.remove('hidden');
-    stepFixer.classList.remove('hidden');
-    stepModifier.classList.add('hidden');
-    subBuilder.textContent = 'Ready to generate structure & copy';
-    subCritic.textContent = 'Testing mobile layout & accessibility';
-    subFixer.textContent = 'Refining visuals, contrast & styles';
-  }
-}
-
-// Preview Toolbar
-btnRefreshPreview.addEventListener('click', () => {
-  if (previewIframe.src) {
-    previewIframe.src = previewIframe.src;
-    logActivity('system', 'Preview reloaded manually');
-  }
-});
 
 function updatePreviewUrl(siteName) {
   currentSite = siteName;
   activeSiteTarget.textContent = `Project: ${siteName}`;
   const url = `http://localhost:3456/${siteName}/`;
-  previewUrlDisplay.value = url;
-  btnExternalPreview.href = url;
   previewIframe.src = url;
   frameTitle.textContent = `${siteName} • Live Preview`;
+
+  if (liveSiteUrls[siteName]) reflectLiveState(liveSiteUrls[siteName]);
+  else resetLiveState();
 }
 
-// Activity Logging
-function logActivity(agent, message) {
-  const item = document.createElement('div');
-  item.className = `activity-item ${agent}`;
-
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'time';
-  const now = new Date();
-  timeSpan.textContent = now.toTimeString().split(' ')[0];
-
-  const msgSpan = document.createElement('span');
-  msgSpan.className = 'msg';
-  msgSpan.textContent = `[${agent.toUpperCase()}] ${message}`;
-
-  item.appendChild(timeSpan);
-  item.appendChild(msgSpan);
-  activityFeed.appendChild(item);
-  activityFeed.scrollTop = activityFeed.scrollHeight;
+function setThreadStatus(state) {
+  if (!pipelineStatusBadge) return;
+  if (state === 'Working') {
+    pipelineStatusBadge.textContent = 'Working';
+    pipelineStatusBadge.className = 'status-pill active';
+  } else if (state === 'Done') {
+    pipelineStatusBadge.textContent = 'Done';
+    pipelineStatusBadge.className = 'status-pill completed';
+  } else if (state === 'Error') {
+    pipelineStatusBadge.textContent = 'Error';
+    pipelineStatusBadge.className = 'status-pill error';
+  } else {
+    pipelineStatusBadge.textContent = 'Idle';
+    pipelineStatusBadge.className = 'status-pill idle';
+  }
 }
 
-btnClearLogs.addEventListener('click', () => {
-  activityFeed.innerHTML = '';
-});
+function showAiThreadCard() {
+  if (aiThreadCard) aiThreadCard.classList.remove('hidden');
+}
 
-// ---------------------------------------------------------------------------
-// Engagement Overlay Helpers (Idle / Build / Refine)
-// ---------------------------------------------------------------------------
+function hideAiThreadCard() {
+  if (aiThreadCard) aiThreadCard.classList.add('hidden');
+}
+
+function resetThread(placeholderText) {
+  if (!aiThreadBody) return;
+  const text = placeholderText || "Describe your dream website above and hit Generate — I'll build it step by step, right here.";
+  aiThreadBody.innerHTML = `<div class="ai-thread-placeholder" id="aiThreadPlaceholder">${escapeHtml(text)}</div>`;
+  currentCriticKey = null;
+  currentFixerKey = null;
+  currentModifierKey = null;
+  setThreadStatus('Idle');
+}
+
+function threadAddUserPrompt(text) {
+  if (!aiThreadBody || !text) return;
+  const placeholder = document.getElementById('aiThreadPlaceholder');
+  if (placeholder) placeholder.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ai-bubble-user';
+  wrap.dataset.originalText = text;
+
+  wrap.innerHTML = `
+    <div class="user-bubble-text"></div>
+    <div class="user-bubble-actions">
+      <button type="button" class="thread-icon-btn" data-action="copy" title="Copy">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      </button>
+    </div>
+  `;
+
+  const textEl = wrap.querySelector('.user-bubble-text');
+  const actionsEl = wrap.querySelector('.user-bubble-actions');
+  textEl.textContent = text;
+
+  wrap.querySelector('[data-action="copy"]').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const textToCopy = textEl.textContent;
+
+    const showCopiedFeedback = () => {
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>`;
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+      }, 1500);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(textToCopy).then(showCopiedFeedback).catch(() => {
+        fallbackCopyText(textToCopy, showCopiedFeedback);
+      });
+    } else {
+      fallbackCopyText(textToCopy, showCopiedFeedback);
+    }
+  });
+
+  aiThreadBody.appendChild(wrap);
+  aiThreadBody.scrollTop = aiThreadBody.scrollHeight;
+  return wrap;
+}
+
+function enterBubbleEditMode(wrap, textEl, actionsEl) {
+  const beforeEdit = textEl.textContent;
+
+  textEl.contentEditable = 'true';
+  textEl.focus();
+  const range = document.createRange();
+  range.selectNodeContents(textEl);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  actionsEl.classList.add('editing');
+  actionsEl.innerHTML = `
+    <button type="button" class="btn-bubble-cancel" data-action="cancel">Cancel</button>
+    <button type="button" class="btn-bubble-save" data-action="save">Save</button>
+  `;
+
+  function exitEditMode(saveIt) {
+    textEl.contentEditable = 'false';
+    if (saveIt) {
+      const edited = textEl.textContent.trim();
+      if (edited) {
+        textEl.textContent = edited;
+        wrap.dataset.originalText = edited;
+        submitEditedPrompt(edited);
+      } else {
+        textEl.textContent = beforeEdit;
+      }
+    } else {
+      textEl.textContent = beforeEdit;
+    }
+
+    actionsEl.classList.remove('editing');
+    actionsEl.innerHTML = `
+      <button type="button" class="thread-icon-btn" data-action="copy" title="Copy">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      </button>
+      <button type="button" class="thread-icon-btn" data-action="edit" title="Edit">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+      </button>
+    `;
+
+    actionsEl.querySelector('[data-action="copy"]').addEventListener('click', () => {
+      navigator.clipboard.writeText(textEl.textContent);
+    });
+    actionsEl.querySelector('[data-action="edit"]').addEventListener('click', () => {
+      enterBubbleEditMode(wrap, textEl, actionsEl);
+    });
+  }
+
+  actionsEl.querySelector('[data-action="save"]').addEventListener('click', () => exitEditMode(true));
+  actionsEl.querySelector('[data-action="cancel"]').addEventListener('click', () => exitEditMode(false));
+
+  textEl.addEventListener('keydown', function handler(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      textEl.removeEventListener('keydown', handler);
+      exitEditMode(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      textEl.removeEventListener('keydown', handler);
+      exitEditMode(false);
+    }
+  });
+}
+
+function threadAddBubble(key, text) {
+  if (!aiThreadBody) return;
+
+  const existing = (currentTurnEl || aiThreadBody).querySelector(`.ai-bubble[data-key="${key}"]`);
+  if (existing) {
+    if (text) {
+      const textEl = existing.querySelector('.ai-bubble-text');
+      if (textEl) textEl.textContent = text;
+    }
+    return existing;
+  }
+
+  const placeholder = document.getElementById('aiThreadPlaceholder');
+  if (placeholder) placeholder.remove();
+
+  const bubble = document.createElement('div');
+  bubble.className = 'ai-bubble thinking';
+  bubble.dataset.key = key;
+  bubble.innerHTML = `
+    <div class="ai-avatar">✨</div>
+    <div class="ai-bubble-content">
+      <div class="ai-bubble-text">${escapeHtml(text)}</div>
+      <div class="ai-typing"><span></span><span></span><span></span></div>
+    </div>
+  `;
+  (currentTurnEl || aiThreadBody).appendChild(bubble);
+  aiThreadBody.scrollTop = aiThreadBody.scrollHeight;
+  return bubble;
+}
+
+function threadCompleteBubble(key, text) {
+  if (!aiThreadBody) return;
+  const bubble = aiThreadBody.querySelector(`.ai-bubble[data-key="${key}"]`);
+  if (!bubble) return;
+  bubble.classList.remove('thinking');
+  bubble.classList.add('done');
+  const textEl = bubble.querySelector('.ai-bubble-text');
+  if (textEl && text) { textEl.textContent = text; currentTurnSteps.push(text); }
+  const typingEl = bubble.querySelector('.ai-typing');
+  if (typingEl) typingEl.outerHTML = '<div class="ai-check">✓</div>';
+  aiThreadBody.scrollTop = aiThreadBody.scrollHeight;
+}
+
+function threadErrorBubble(key, text) {
+  if (!aiThreadBody) return;
+  let bubble = aiThreadBody.querySelector(`.ai-bubble[data-key="${key}"]`);
+  if (!bubble) bubble = threadAddBubble(key, text);
+  bubble.classList.remove('thinking');
+  bubble.classList.add('error');
+  const textEl = bubble.querySelector('.ai-bubble-text');
+  if (textEl) { textEl.textContent = text; currentTurnSteps.push(text); }
+  const typingEl = bubble.querySelector('.ai-typing');
+  if (typingEl) typingEl.outerHTML = '<div class="ai-check">⚠</div>';
+  aiThreadBody.scrollTop = aiThreadBody.scrollHeight;
+}
+
+function threadStopAllThinkingBubbles() {
+  const scope = currentTurnEl || aiThreadBody;
+  if (!scope) return;
+  const thinkingBubbles = scope.querySelectorAll('.ai-bubble.thinking');
+  thinkingBubbles.forEach(bubble => {
+    bubble.classList.remove('thinking');
+    bubble.classList.add('stopped');
+    const typingEl = bubble.querySelector('.ai-typing');
+    if (typingEl) typingEl.outerHTML = '<div class="ai-stop-icon">⏹</div>';
+  });
+}
+
+function threadAddDone(text) {
+  if (!aiThreadBody || !text) return;
+  const placeholder = document.getElementById('aiThreadPlaceholder');
+  if (placeholder) placeholder.remove();
+
+  const bubble = document.createElement('div');
+  bubble.className = 'ai-bubble done';
+  bubble.innerHTML = `
+    <div class="ai-avatar">✨</div>
+    <div class="ai-bubble-content">
+      <div class="ai-bubble-text">${escapeHtml(text)}</div>
+      <div class="ai-check">✓</div>
+    </div>
+  `;
+  (currentTurnEl || aiThreadBody).appendChild(bubble);
+  currentTurnSteps.push(text);
+  aiThreadBody.scrollTop = aiThreadBody.scrollHeight;
+}
+
+function updateSettingsVisibility() {
+  if (!settingsAccordion) return;
+  const shouldShow = appMode === 'create' && !hasGeneratedOnce && !isGenerating;
+  settingsAccordion.classList.toggle('hidden', !shouldShow);
+}
 
 function showIdleOverlay() {
   idleOverlay.classList.remove('hidden');
@@ -418,7 +889,6 @@ function hideRefineOverlay() {
   refineOverlay.classList.add('hidden');
 }
 
-// Real-Time Server-Sent Events (SSE)
 function setupSSE() {
   const evtSource = new EventSource('/api/stream');
 
@@ -436,58 +906,90 @@ function setupSSE() {
   };
 }
 
+function beginNewAiTurn() {
+  if (currentTurnEl) {
+    collapseAiTurn(currentTurnEl, currentTurnSteps);
+  }
+  currentTurnEl = document.createElement('div');
+  currentTurnEl.className = 'ai-turn active';
+  aiThreadBody.appendChild(currentTurnEl);
+  currentTurnSteps = [];
+  currentTurnStartTime = Date.now();
+}
+
+function collapseAiTurn(turnEl, steps) {
+  if (!turnEl || !turnEl.parentNode) return;
+  const elapsed = currentTurnStartTime ? Math.max(1, Math.round((Date.now() - currentTurnStartTime) / 1000)) : null;
+  const lastText = steps.length ? steps[steps.length - 1] : 'Done';
+
+  const summary = document.createElement('div');
+  summary.className = 'ai-turn-summary';
+  summary.innerHTML = `
+    <button type="button" class="ai-turn-summary-toggle">
+      <span class="ai-turn-summary-text">${escapeHtml(lastText)}</span>
+      <svg class="ai-turn-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    </button>
+    <div class="ai-turn-summary-detail hidden">
+      ${elapsed ? `<div class="ai-turn-thought-time">Thought for ${elapsed}s</div>` : ''}
+      <ul class="ai-turn-step-list">${steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>
+    </div>
+  `;
+  const toggle = summary.querySelector('.ai-turn-summary-toggle');
+  const detail = summary.querySelector('.ai-turn-summary-detail');
+  const chevron = summary.querySelector('.ai-turn-chevron');
+  toggle.addEventListener('click', () => {
+    const open = detail.classList.toggle('hidden');
+    chevron.classList.toggle('open', !open);
+  });
+  turnEl.replaceWith(summary);
+}
+
 function handleWorkflowEvent(type, data) {
+  if (isStopped && type !== 'connected') return;
   switch (type) {
     case 'connected':
-      logActivity('system', 'Connected to real-time agent stream');
       break;
 
     case 'workflow_started':
+      beginNewAiTurn();
+      showAiThreadCard();
       setGenerationRunning(true);
-      resetPipeline();
-      // Overlay is already shown optimistically on click; this keeps it in
-      // sync in case the server confirms with a different headline/site.
+      setThreadStatus('Working');
       showBuildOverlay('Crafting Your Website');
-      logActivity('system', `Building your new website "${data.siteName}"…`);
       break;
 
     case 'modification_started':
+      beginNewAiTurn();
+      showAiThreadCard();
       setGenerationRunning(true);
-      pipelineStatusBadge.textContent = 'Modifying';
-      pipelineStatusBadge.className = 'status-pill active';
-      stepModifier.className = 'pipe-step running';
-      subModifier.textContent = 'Applying targeted edits...';
+      setThreadStatus('Working');
+      currentModifierKey = `modifier-${currentRunId}`;
+      threadAddBubble(currentModifierKey, 'Applying your requested changes…');
       showRefineOverlay('Applying your modifications…');
-      logActivity('fixer', `Applying modifications to "${data.siteName}": "${data.prompt}"`);
       break;
 
     case 'node_start':
       if (data.node === 'builder') {
-        stepBuilder.className = 'pipe-step running';
-        subBuilder.textContent = 'Designing your layout & content…';
-        logActivity('builder', 'Designing layout, content, and styling…');
+        threadAddBubble('builder', 'Reading your idea and designing the layout, content & style…');
       } else if (data.node === 'critic') {
-        stepCritic.className = 'pipe-step running';
-        subCritic.textContent = `Quality inspection (pass ${data.iteration}/${data.maxIterations})…`;
+        currentCriticKey = `critic-${currentRunId}-${data.iteration}`;
+        threadAddBubble(currentCriticKey, `Reviewing quality & accessibility (pass ${data.iteration})…`);
         showRefineOverlay(`Inspecting quality & accessibility (pass ${data.iteration})…`);
-        logActivity('critic', `Running quality inspection (Pass ${data.iteration})…`);
       } else if (data.node === 'fixer') {
-        stepFixer.className = 'pipe-step running';
-        subFixer.textContent = `Auto-polishing (pass ${data.iteration})…`;
+        currentFixerKey = `fixer-${currentRunId}-${data.iteration}`;
+        threadAddBubble(currentFixerKey, `Polishing the design (pass ${data.iteration})…`);
         showRefineOverlay(`Polishing design (pass ${data.iteration})…`);
-        logActivity('fixer', `Polishing and fixing issues (Pass ${data.iteration})…`);
       } else if (data.node === 'modifier') {
-        stepModifier.className = 'pipe-step running';
-        subModifier.textContent = 'Applying your requested changes…';
-        logActivity('fixer', data.message);
+        if (!currentModifierKey) currentModifierKey = `modifier-${currentRunId}`;
+        threadAddBubble(currentModifierKey, data.message || 'Applying your requested changes…');
       }
       break;
 
     case 'node_end':
       if (data.node === 'builder') {
-        stepBuilder.className = 'pipe-step done';
-        subBuilder.textContent = 'Layout & content created ✓';
-        logActivity('builder', 'Your website layout is ready!');
+        threadCompleteBubble('builder', 'Layout & content ready ✓');
         hasGeneratedOnce = true;
         hideBuildOverlay();
         updatePreviewUrl(data.siteName);
@@ -495,105 +997,93 @@ function handleWorkflowEvent(type, data) {
       break;
 
     case 'audit_scores':
-      stepCritic.className = 'pipe-step done';
-      subCritic.textContent = `Inspection pass ${data.iteration} complete ✓`;
+      if (currentCriticKey) {
+        threadCompleteBubble(
+          currentCriticKey,
+          `Quality check done — Speed ${data.scores.performance}, Accessibility ${data.scores.accessibility}, SEO ${data.scores.seo}`
+        );
+      }
       updateScores(data.scores);
-      renderIssues(data.issues, data.runtimeErrors);
-      logActivity('critic', `Health scores: Speed ${data.scores.performance} | Accessibility ${data.scores.accessibility} | Quality ${data.scores.bestPractices} | SEO ${data.scores.seo}`);
+      renderIssues(data.issues);
       break;
 
     case 'site_reloaded':
       if (appMode === 'modify') {
-        stepModifier.className = 'pipe-step done';
-        subModifier.textContent = 'Changes applied & preview updated ✓';
-      } else {
-        stepFixer.className = 'pipe-step done';
-        subFixer.textContent = `Polish pass ${data.iteration || 1} applied ✓`;
+        threadCompleteBubble(currentModifierKey || 'modifier', 'Changes applied — preview updated ✓');
+      } else if (currentFixerKey) {
+        threadCompleteBubble(currentFixerKey, 'Polish applied — preview updated ✓');
       }
-      logActivity('fixer', 'Live preview updated with latest improvements');
       fetchSiteCode(currentSite);
       break;
 
     case 'modification_finished':
+      closeDrawer();
       setGenerationRunning(false);
-      pipelineStatusBadge.textContent = 'Done';
-      pipelineStatusBadge.className = 'status-pill completed';
+      setThreadStatus('Done');
       hideRefineOverlay();
-      logActivity('success', `✨ Your edits to "${data.siteName}" are live!`);
+      threadAddDone(`✨ Your edits to "${data.siteName}" are live!`);
       fetchSiteCode(data.siteName);
-      postGenChoiceBanner.classList.add('visible');
+      setPublishButtonVisible(true);
+      if (currentTurnEl) {
+        collapseAiTurn(currentTurnEl, currentTurnSteps);
+        currentTurnEl = null;
+      }
       break;
 
     case 'workflow_completed':
-      logActivity('success', `✓ ${data.reason}`);
+      threadAddDone(data.reason);
       break;
 
     case 'workflow_finished':
+      closeDrawer();
       setGenerationRunning(false);
-      pipelineStatusBadge.textContent = 'Done';
-      pipelineStatusBadge.className = 'status-pill completed';
+      setThreadStatus('Done');
       hasGeneratedOnce = true;
       hideBuildOverlay();
       hideRefineOverlay();
-      logActivity('success', `🎉 Your website is live! (${data.iteration} polish passes applied)`);
+      threadAddDone(`🎉 Your website is live! (${data.iteration} polish pass${data.iteration === 1 ? '' : 'es'} applied)`);
       updateScores(data.scores);
       fetchSiteCode(data.siteName);
       updatePreviewUrl(data.siteName);
-      // Show Choice Banner
-      postGenChoiceBanner.classList.add('visible');
+      setPublishButtonVisible(true);
+      openChoiceBanner({ mandatory: true });
+      if (currentTurnEl) {
+        collapseAiTurn(currentTurnEl, currentTurnSteps);
+        currentTurnEl = null;
+      }
       break;
 
     case 'workflow_error':
       setGenerationRunning(false);
-      pipelineStatusBadge.textContent = 'Error';
-      pipelineStatusBadge.className = 'status-pill error';
+      setThreadStatus('Error');
       hideBuildOverlay();
       hideRefineOverlay();
       if (!hasGeneratedOnce) showIdleOverlay();
-      logActivity('error', `Something went wrong: ${data.error}`);
+      threadErrorBubble(
+        appMode === 'modify' ? (currentModifierKey || 'modifier') : (currentFixerKey || currentCriticKey || 'builder'),
+        `Something went wrong: ${data.error}`
+      );
       break;
-  }
-}
-
-function resetPipeline() {
-  pipelineStatusBadge.textContent = 'Working';
-  pipelineStatusBadge.className = 'status-pill active';
-
-  if (appMode === 'modify') {
-    stepModifier.className = 'pipe-step running';
-    subModifier.textContent = 'Applying your edits…';
-  } else {
-    stepBuilder.className = 'pipe-step';
-    subBuilder.textContent = 'Designing layout…';
-    stepCritic.className = 'pipe-step';
-    subCritic.textContent = 'Quality check pending…';
-    stepFixer.className = 'pipe-step';
-    subFixer.textContent = 'Auto-polish pending…';
   }
 }
 
 function setGenerationRunning(running) {
   isGenerating = running;
-  btnGenerate.disabled = running;
 
-  // Lock the code editor while the AI is working on the site
+  btnGenerate.classList.toggle('generating', running);
+  btnGenerate.title = running
+    ? (appMode === 'modify' ? 'Applying changes…' : 'Building your site…')
+    : (appMode === 'modify' ? 'Apply Changes' : 'Generate Website');
+
+  updateSettingsVisibility();
+
   codeEditor.readOnly = running;
   btnSaveCode.disabled = running;
   btnResetCode.disabled = running;
 
-  if (running) {
-    btnSpinner.classList.remove('hidden');
-    btnText.textContent = appMode === 'modify' ? 'Applying Changes…' : 'Building Your Site…';
-  } else {
-    btnSpinner.classList.add('hidden');
-    btnText.textContent = appMode === 'modify' ? 'Apply Changes' : 'Generate Website';
-  }
-
-  // Click-to-code is paused while the AI is working
   syncInspectMode();
 }
 
-// Update Score Cards with Colors
 function updateScores(scores = {}) {
   const p = scores.performance ?? 0;
   const a = scores.accessibility ?? 0;
@@ -620,42 +1110,29 @@ function setScoreCard(valEl, barEl, cardEl, score) {
   }
 }
 
-function renderIssues(issues = [], runtimeErrors = []) {
-  if (issues.length === 0 && runtimeErrors.length === 0) {
+function renderIssues(issues = []) {
+  if (issues.length === 0) {
     issuesList.innerHTML = '<div class="empty-state">🎉 All quality standards met! Zero issues detected.</div>';
     return;
   }
 
-  let html = '';
-  runtimeErrors.forEach(err => {
-    html += `
-      <div class="issue-card" style="border-left-color: var(--color-red);">
-        <div class="category" style="color: var(--color-red);">Runtime Error</div>
-        <div class="problem">${escapeHtml(err)}</div>
-      </div>`;
-  });
+  const order = { new: 0, unresolved: 1, resolved: 2 };
+  const sorted = [...issues].sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
 
-  issues.forEach(iss => {
-    html += `
-      <div class="issue-card">
-        <div class="category">${escapeHtml(iss.category || 'Issue')}</div>
-        <div class="problem">${escapeHtml(iss.problem)}</div>
-        <div class="suggestion">${escapeHtml(iss.suggestion)}</div>
-      </div>`;
-  });
-
-  issuesList.innerHTML = html;
+  issuesList.innerHTML = sorted.map(iss => `
+    <div class="issue-card status-${iss.status || 'unresolved'}">
+      <div class="issue-status-badge">${(iss.status || 'unresolved').toUpperCase()}</div>
+      <div class="category">${escapeHtml(iss.category || 'Issue')}</div>
+      <div class="problem">${escapeHtml(iss.problem)}</div>
+      ${iss.suggestion ? `<div class="suggestion">${escapeHtml(iss.suggestion)}</div>` : ''}
+    </div>`).join('');
 }
 
-// ---------------------------------------------------------------------------
-// Editable Code Editor
-// ---------------------------------------------------------------------------
 function setCodeStatus(message, type = '') {
   codeStatus.textContent = message;
   codeStatus.className = `code-status ${type}`.trim();
 }
 
-// Fetch generated code from the server into the editor
 async function fetchSiteCode(siteName) {
   codeSiteName.textContent = `${siteName} / index.html`;
   try {
@@ -663,7 +1140,7 @@ async function fetchSiteCode(siteName) {
     if (res.ok) {
       const data = await res.json();
       codeEditor.value = data.code;
-      savedCode = codeEditor.value; // textarea normalizes line endings
+      savedCode = codeEditor.value;
     } else {
       codeEditor.value = '// Website code not yet generated for this site.';
       savedCode = codeEditor.value;
@@ -676,7 +1153,66 @@ async function fetchSiteCode(siteName) {
   setCodeStatus('');
 }
 
-// Save edited code -> server -> live preview reload
+async function submitEditedPrompt(promptText) {
+  if (!promptText || isGenerating) return;
+
+  const siteName = currentSite || (siteNameInput.value.trim() || 'site1');
+  const maxIterations = Number(maxIterationsInput.value) || 2;
+  const stack = (stackSelect && stackSelect.value) || 'react-tailwind-cdn';
+
+  if (codeDirty) {
+    const proceed = confirm('You have unsaved code edits. Continue and discard them?');
+    if (!proceed) return;
+    codeDirty = false;
+  }
+
+  currentRunId++;
+  isStopped = false;
+  showAiThreadCard();
+  setGenerationRunning(true);
+  setThreadStatus('Working');
+  closeChoiceBanner(true);
+
+  if (appMode === 'modify') {
+    showRefineOverlay('Applying your custom edits…');
+  } else {
+    showBuildOverlay('Crafting Your Website');
+  }
+
+  updatePreviewUrl(siteName);
+
+  if (appMode === 'modify') {
+    try {
+      const res = await fetch('/api/modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteName, modificationPrompt: promptText })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to apply modifications');
+    } catch (err) {
+      threadErrorBubble('modifier', err.message);
+      setGenerationRunning(false);
+      hideRefineOverlay();
+    }
+  } else {
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText, siteName, maxIterations, stack })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start generation');
+    } catch (err) {
+      threadErrorBubble('builder', err.message);
+      setGenerationRunning(false);
+      hideBuildOverlay();
+      if (!hasGeneratedOnce) showIdleOverlay();
+    }
+  }
+}
+
 async function saveCode() {
   const code = codeEditor.value;
 
@@ -710,30 +1246,25 @@ async function saveCode() {
     savedCode = code;
     codeDirty = false;
     setCodeStatus('Saved ✓ Live preview updated', 'success');
-    logActivity('success', `Your code edits to "${currentSite}" were applied to the live preview`);
   } catch (err) {
     setCodeStatus(err.message, 'error');
-    logActivity('error', `Code save failed: ${err.message}`);
   } finally {
     btnSaveCode.disabled = isGenerating;
   }
 }
 
 function setupCodeEditor() {
-  // Track unsaved changes
   codeEditor.addEventListener('input', () => {
     codeDirty = codeEditor.value !== savedCode;
     setCodeStatus(codeDirty ? 'Unsaved changes — press Save & Apply (Ctrl+S)' : '', codeDirty ? 'dirty' : '');
   });
 
   codeEditor.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + S to save
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       saveCode();
       return;
     }
-    // Tab inserts 2 spaces instead of moving focus
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
       codeEditor.setRangeText('  ', codeEditor.selectionStart, codeEditor.selectionEnd, 'end');
@@ -749,20 +1280,34 @@ function setupCodeEditor() {
     setCodeStatus('Edits discarded.');
   });
 
-  // Copy Code
-  btnCopyCode.addEventListener('click', () => {
-    if (codeEditor.value) {
-      navigator.clipboard.writeText(codeEditor.value).then(() => {
-        const orig = btnCopyCode.innerHTML;
-        btnCopyCode.textContent = 'Copied!';
-        setTimeout(() => (btnCopyCode.innerHTML = orig), 2000);
+    btnCopyDeployUrl.addEventListener('click', () => {
+    const url = deployUrlText.textContent;
+    const showCopiedFeedback = () => {
+      const original = btnCopyDeployUrl.innerHTML;
+      btnCopyDeployUrl.textContent = '✓';
+      btnCopyDeployUrl.disabled = true;
+      setTimeout(() => {
+        btnCopyDeployUrl.innerHTML = original;
+        btnCopyDeployUrl.disabled = false;
+      }, 1500);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(showCopiedFeedback).catch(() => {
+        fallbackCopyText(url, showCopiedFeedback);
       });
+    } else {
+      fallbackCopyText(url, showCopiedFeedback);
     }
   });
 }
 
-// Trigger Generation or Modification Request
 btnGenerate.addEventListener('click', async () => {
+  if (isGenerating) {
+    stopGeneration();
+    return;
+  }
+
   const prompt = promptInput.value.trim();
   const siteName = (siteNameInput.value.trim() || currentSite || 'site1').replace(/[^a-zA-Z0-9_-]/g, '');
   const maxIterations = Number(maxIterationsInput.value) || 2;
@@ -773,7 +1318,6 @@ btnGenerate.addEventListener('click', async () => {
     return;
   }
 
-  // Warn before the AI overwrites unsaved manual code edits
   if (codeDirty) {
     const proceed = confirm('You have unsaved code edits. Continue and discard them?');
     if (!proceed) return;
@@ -781,16 +1325,19 @@ btnGenerate.addEventListener('click', async () => {
   }
 
   currentSite = siteName;
+  currentRunId++;
+  isStopped = false;
+  showAiThreadCard();
   setGenerationRunning(true);
-  resetPipeline();
-  postGenChoiceBanner.classList.remove('visible');
-  if (deployStatus) {
-    deployStatus.classList.add('hidden');
-    deployStatus.innerHTML = '';
-  }
 
-  // Show the engaging overlay INSTANTLY on click — don't wait for the SSE
-  // round-trip to confirm the workflow actually started server-side.
+  if (appMode === 'create') {
+    resetThread();
+  }
+  setThreadStatus('Working');
+  closeChoiceBanner(true);
+  threadAddUserPrompt(prompt);
+  promptInput.value = '';
+
   if (appMode === 'modify') {
     showRefineOverlay('Applying your custom edits…');
   } else {
@@ -800,8 +1347,6 @@ btnGenerate.addEventListener('click', async () => {
   updatePreviewUrl(siteName);
 
   if (appMode === 'modify') {
-    // --- MODIFICATION MODE ---
-    logActivity('system', `Submitting modification request for "${siteName}"...`);
     try {
       const res = await fetch('/api/modify', {
         method: 'POST',
@@ -817,13 +1362,11 @@ btnGenerate.addEventListener('click', async () => {
         throw new Error(data.error || 'Failed to apply modifications');
       }
     } catch (err) {
-      logActivity('error', err.message);
+      threadErrorBubble('modifier', err.message);
       setGenerationRunning(false);
       hideRefineOverlay();
     }
   } else {
-    // --- CREATION MODE ---
-    logActivity('system', `Submitting new site request for "${siteName}" (stack: ${stack})...`);
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -836,7 +1379,7 @@ btnGenerate.addEventListener('click', async () => {
         throw new Error(data.error || 'Failed to start generation');
       }
     } catch (err) {
-      logActivity('error', err.message);
+      threadErrorBubble('builder', err.message);
       setGenerationRunning(false);
       hideBuildOverlay();
       if (!hasGeneratedOnce) showIdleOverlay();
@@ -844,29 +1387,108 @@ btnGenerate.addEventListener('click', async () => {
   }
 });
 
+function fallbackCopyText(text, onSuccess) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    if (onSuccess) onSuccess();
+  } catch (e) {
+    console.warn('Copy failed', e);
+  }
+  document.body.removeChild(textarea);
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// One-Click Deploy to Vercel
+
+function renderDeploySteps(activeIdx) {
+  deployStepList.innerHTML = DEPLOY_STEPS.map((s, i) => {
+    const state = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+    const icon = state === 'done' ? '✓' : state === 'active'
+      ? '<span class="deploy-step-spinner"></span>' : '';
+    return `<li class="deploy-step ${state}"><span class="deploy-step-icon">${icon}</span>${escapeHtml(s.label)}</li>`;
+  }).join('');
+}
+
+function startDeployStepCycle() {
+  let i = 0;
+  renderDeploySteps(0);
+  deployStepInterval = setInterval(() => {
+    if (i < DEPLOY_STEPS.length - 1) { i++; renderDeploySteps(i); }
+  }, 1400);
+}
+
+function stopDeployStepCycle() {
+  if (deployStepInterval) clearInterval(deployStepInterval);
+  deployStepInterval = null;
+}
+
+function openDeployModal() {
+  document.getElementById('deployModalTitle').textContent = 'Publishing Your Website';
+  document.getElementById('deployModalSubtitle').textContent = 'Sit tight — this only takes a moment.';
+  document.getElementById('deployModalIcon').textContent = '🚀';
+  deployStepList.classList.remove('hidden');
+  deployUrlBox.classList.add('hidden');
+  deployErrorBox.classList.add('hidden');
+  btnCloseDeployModal.classList.add('hidden'); // mandatory while working
+  deployModal.classList.add('visible');
+}
+
+function showDeploySuccess(url) {
+  document.getElementById('deployModalTitle').textContent = '🎉 Your Website is Live!';
+  document.getElementById('deployModalSubtitle').textContent = 'Share the link below with anyone.';
+  deployStepList.classList.add('hidden');
+  deployUrlBox.classList.remove('hidden');
+  deployUrlText.textContent = url;
+  btnOpenDeployUrl.href = url;
+  btnCloseDeployModal.classList.remove('hidden');
+}
+
+function showDeployError(message) {
+  document.getElementById('deployModalTitle').textContent = 'Publishing Failed';
+  document.getElementById('deployModalIcon').textContent = '⚠️';
+  deployStepList.classList.add('hidden');
+  deployErrorBox.classList.remove('hidden');
+  deployErrorText.textContent = message;
+  btnCloseDeployModal.classList.remove('hidden');
+}
+
+function closeDeployModal() {
+  deployModal.classList.remove('visible');
+}
+
+function setLiveSiteUrl(siteName, url) {
+  liveSiteUrls[siteName] = url;
+  if (siteName === currentSite) reflectLiveState(url);
+}
+
+function reflectLiveState(url) {
+  if (!btnChoiceDeploy) return;
+  btnChoiceDeploy.classList.add('is-live');
+  btnChoiceDeploy.querySelector('.deploy-btn-text').textContent = 'View Live Site ↗';
+  if (btnRepublish) btnRepublish.classList.remove('hidden');
+}
+
+function resetLiveState() {
+  if (!btnChoiceDeploy) return;
+  btnChoiceDeploy.classList.remove('is-live');
+  btnChoiceDeploy.querySelector('.deploy-btn-text').textContent = 'Publish Website (Get Live Link)';
+  if (btnRepublish) btnRepublish.classList.add('hidden');
+}
+
 async function deployCurrentSiteToVercel() {
   const siteName = currentSite || siteNameInput.value.trim() || 'site1';
-  const deployBtnText = btnChoiceDeploy.querySelector('.deploy-btn-text');
-  const deploySpinner = btnChoiceDeploy.querySelector('.deploy-spinner');
-
-  btnChoiceDeploy.disabled = true;
-  if (deploySpinner) deploySpinner.classList.remove('hidden');
-  if (deployBtnText) deployBtnText.textContent = 'Publishing to Vercel...';
-
-  deployStatus.className = 'deploy-status loading';
-  deployStatus.classList.remove('hidden');
-  deployStatus.innerHTML = `
-    <span class="deploy-spinner"></span>
-    <span>Deploying <strong>"${escapeHtml(siteName)}"</strong> to Vercel... Provisioning live URL...</span>
-  `;
-
-  logActivity('system', `Deploying "${siteName}" to Vercel...`);
+  openDeployModal();
+  startDeployStepCycle();
 
   try {
     const res = await fetch('/api/deploy', {
@@ -874,48 +1496,66 @@ async function deployCurrentSiteToVercel() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ siteName })
     });
-
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Publishing failed');
 
-    if (!res.ok) {
-      throw new Error(data.error || 'Deployment failed');
-    }
-
-    deployStatus.className = 'deploy-status success';
-    deployStatus.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
-        <div>
-          <span>🚀 <strong>Live on Vercel:</strong></span><br>
-          <a href="${data.url}" target="_blank" rel="noopener noreferrer">${data.url}</a>
-        </div>
-        <a href="${data.url}" target="_blank" rel="noopener noreferrer" class="btn-choice" style="background: rgba(16,185,129,0.25); border-color: rgba(16,185,129,0.5); color: #fff; padding: 4px 12px; font-size: 11px; text-decoration: none; white-space: nowrap;">
-          Open Live Site ↗
-        </a>
-      </div>
-    `;
-    logActivity('success', `🎉 Deployed successfully! Live URL: ${data.url}`);
+    stopDeployStepCycle();
+    renderDeploySteps(DEPLOY_STEPS.length); // all done
+    showDeploySuccess(data.url);
+    setLiveSiteUrl(siteName, data.url);
   } catch (err) {
-    console.error('Deploy error:', err);
-    deployStatus.className = 'deploy-status error';
-    deployStatus.innerHTML = `
-      <strong>Deployment Error:</strong> ${escapeHtml(err.message)}
-    `;
-    logActivity('error', `Vercel deploy failed: ${err.message}`);
+    stopDeployStepCycle();
+    showDeployError(err.message);
+  }
+}
+// ---------------------------------------------------------------------------
+// UPDATED: stopGeneration() now branches on whether the builder had already
+// produced a real site before the stop (hasGeneratedOnce), so a half-built
+// site isn't just discarded — the user can keep editing it.
+// ---------------------------------------------------------------------------
+async function stopGeneration() {
+  isStopped = true;
+
+  try {
+    await fetch('/api/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteName: currentSite })
+    });
+  } catch (e) {
+    console.warn('Stop request failed', e);
   } finally {
-    btnChoiceDeploy.disabled = false;
-    if (deploySpinner) deploySpinner.classList.add('hidden');
-    if (deployBtnText) deployBtnText.textContent = 'Publish to Vercel (Live URL)';
+    threadStopAllThinkingBubbles();
+    setGenerationRunning(false);
+    setThreadStatus('Idle');
+    hideBuildOverlay();
+    hideRefineOverlay();
+
+    if (hasGeneratedOnce) {
+      // A real site already exists on disk from before the stop — pull it
+      // into the code tab / preview instead of treating it as lost work.
+      fetchSiteCode(currentSite);
+      setPublishButtonVisible(true);
+
+      if (appMode === 'create') {
+        threadAddDone('⏹ Generation stopped — your partial website was saved. Continue editing it below, or start fresh.');
+        openChoiceBanner({ stopped: true }); // not mandatory — safe to dismiss
+      } else {
+        threadAddDone('⏹ Edit stopped — reverted to the last saved version. Keep making changes below.');
+      }
+    } else {
+      // Nothing was ever produced — back to the idle state.
+      showIdleOverlay();
+      threadAddDone('⏹ Generation stopped before your website was created.');
+    }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Click-to-code: while the Code tab is open, clicking anything in the
-// preview jumps to that element's HTML in the editor (like DevTools)
-// ---------------------------------------------------------------------------
 const PREVIEW_ORIGIN = 'http://localhost:3456';
 let inspectMode = false;
 
 function sendToPreview(msg) {
+  if (!hasGeneratedOnce || !previewIframe.src || previewIframe.src === 'about:blank') return;
   try {
     previewIframe.contentWindow.postMessage(msg, PREVIEW_ORIGIN);
   } catch (e) { /* preview not loaded yet */ }
@@ -936,10 +1576,9 @@ function syncInspectMode() {
   }
 }
 
-// The preview reloads after every save/edit, so re-apply the mode each time
 previewIframe.addEventListener('load', syncInspectMode);
 
-async function jumpToElementInCode(idx, tag) {
+async function jumpToElementInCode(idx, tag,version) {
   if (isGenerating) return;
 
   if (codeDirty) {
@@ -948,15 +1587,21 @@ async function jumpToElementInCode(idx, tag) {
   }
 
   try {
-    await fetchSiteCode(currentSite); // make sure the editor holds the current code
+    await fetchSiteCode(currentSite);
     const res = await fetch(`/api/site/${encodeURIComponent(currentSite)}/map`);
     if (!res.ok) throw new Error('Could not load element map');
-    const { tags } = await res.json();
+    const { tags, version: currentVersion } = await res.json();
+
+    // Preview is showing an older version of the file than the editor: refresh it
+    if (version && currentVersion && version !== currentVersion) {
+      previewIframe.src = previewIframe.src;
+      setCodeStatus('Preview was out of date, so I refreshed it. Click the element again.', 'error');
+      return;
+    }
     const entry = tags[idx];
     if (!entry) throw new Error('Element not found in code');
 
     const [start, openEnd, end] = entry;
-    // Big containers (sections, body): select just the opening tag
     const selEnd = (end - start > 3000) ? openEnd : end;
 
     codeEditor.focus();
@@ -977,5 +1622,5 @@ window.addEventListener('message', (e) => {
   if (e.origin !== PREVIEW_ORIGIN) return;
   const msg = e.data;
   if (!msg || msg.type !== 'lumina-select') return;
-  jumpToElementInCode(msg.idx, msg.tag);
+  jumpToElementInCode(msg.idx, msg.tag, msg.version);
 });

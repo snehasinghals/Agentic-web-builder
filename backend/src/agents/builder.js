@@ -1,17 +1,22 @@
 const fs = require('fs');
 const path = require('path');
-const { ChatGroq } = require('@langchain/groq');
 const { ENV_PATH, getSiteDir, getSiteIndexPath } = require('../config/paths');
+const { invokeWithKeyRotation } = require('../services/groqpool');
+
+const { injectSafetyNet } = require('../services/visibilitySafetyNet');
 
 require('dotenv').config({ path: ENV_PATH });
 
-const model = new ChatGroq({
+const MODEL_OPTIONS = {
   model: 'openai/gpt-oss-120b',
   temperature: 0.3,
-  maxTokens: 11000,
-  maxRetries: 5,
-  apiKey: process.env.GROQ_API_KEY1
-});
+  maxTokens: 11000
+};
+
+async function invokeBuilderWithFallback(messages, signal) {
+  console.log('[Builder Agent] Generating site via Groq (openai/gpt-oss-120b)...');
+  return await invokeWithKeyRotation(messages, MODEL_OPTIONS, signal);
+}
 
 // -----------------------------------------------------------------------
 // Stack-specific instructions. Each option still produces ONE self-contained
@@ -26,9 +31,9 @@ function getStackInstructions(stack) {
 - A small <style> block is allowed ONLY for @keyframes animations or things Tailwind utility classes cannot express (e.g. custom gradients, custom font-face). Do not duplicate layout/spacing/color rules that Tailwind classes already handle.
 - Still include plain <script> JavaScript (no framework) for interactivity (mobile nav toggle, smooth scroll, FAQ accordion, form validation).`;
 
-    case 'react-cdn':
-      return `STACK: React (CDN, no build step).
-- In the <head>, include, in this order:
+      case 'react-cdn':
+        return `STACK: React (CDN, no build step).
+- In the <head>, include these three scripts with NO async and NO defer attributes on any of them, in this exact order (they must execute synchronously — async/defer causes React/ReactDOM to load out of order and crash the app):
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -41,7 +46,7 @@ function getStackInstructions(stack) {
 
     case 'react-tailwind-cdn':
       return `STACK: React (CDN, no build step) + Tailwind CSS.
-- In the <head>, include, in this order:
+- In the <head>, include, in this order. The Tailwind script can be async/defer, but the React/ReactDOM/Babel scripts must have NO async and NO defer attributes — they must execute synchronously, or React/ReactDOM can load out of order and crash the app:
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -62,6 +67,11 @@ function getStackInstructions(stack) {
 }
 
 function buildSystemPrompt(stack) {
+  const isReactStack = stack === 'react-cdn' || stack === 'react-tailwind-cdn';
+  const onErrorInstruction = isReactStack
+    ? `onError={(e) => { e.target.onerror = null; e.target.src = 'https://picsum.photos/800/600?random=1'; }} — this MUST be a JSX function handler, never a quoted string. A string value for onError throws "Minified React error #231" and crashes the app.`
+    : `onerror="this.onerror=null;this.src='https://picsum.photos/800/600?random=1';"`;
+
   return `You are an expert full-stack web designer and frontend developer.
 Your task is to build a complete, beautiful, modern, mobile-responsive single-page website for the user's request.
 
@@ -124,7 +134,7 @@ CRITICAL INSTRUCTIONS:
      * A meaningful, descriptive alt text
      * Explicit width and height attributes (or CSS aspect-ratio)
      * A dynamic fallback that never breaks:
-       onerror="this.onerror=null;this.src='https://picsum.photos/800/600?random=1';"
+       ${onErrorInstruction}
    - ICONS & BADGES: For feature icons, process step numbers, and small badges, NEVER use <img> tags. Always use clean inline SVG icons (<svg width="24" height="24" ...>) or appropriate Unicode emojis (✨, 🥖, ⚡, 🥐, 🛡️, 📦, ☕). This guarantees icons never show as broken image boxes.
 
 7. Include essential meta tags: <meta name="viewport" content="width=device-width, initial-scale=1.0">, <meta name="description" content="...">, and <html lang="en">.
@@ -135,16 +145,29 @@ CRITICAL INSTRUCTIONS:
 
 10. Use flexbox/grid, responsive media queries (or Tailwind's responsive prefixes, per the stack), subtle box shadows, and tasteful scroll/hover animations — not excessive.
 
-11. Output ONLY the complete HTML code inside a \`\`\`html ... \`\`\` block.`;
+11. VISIBILITY RULES (very important, the preview breaks without these):
+   - Every section that uses light/white text MUST have a solid fallback background color (example: background-color:#1e3a8a) AND then the gradient on top. Never rely on a gradient alone.
+   - Only use CSS variables that you define yourself in :root. Never use a variable you did not define.
+   - Never start any content hidden. Do NOT use opacity:0, visibility:hidden or Tailwind opacity-0 as the starting state for sections, headings or text. Scroll-reveal animations are NOT allowed. Content must be fully visible with zero JavaScript.
+   - For Tailwind stacks: use only standard Tailwind colors (bg-indigo-600, from-blue-500, etc). Never use made-up names like bg-primary or from-brand.
+   - Text color and background color of the same section must have strong contrast (light text on dark bg, dark text on light bg).
+
+12. Output ONLY the complete HTML code inside a \`\`\`html ... \`\`\` block.`;
 }
 
-async function runBuilderAgent(siteName, prompt, stack = 'react-tailwind-cdn') {
+async function runBuilderAgent(siteName, prompt, stack = 'react-tailwind-cdn', signal) {
+  if (signal?.aborted) {
+    const err = new Error('Aborted by user');
+    err.name = 'AbortError';
+    throw err;
+  }
+
   console.log(`\n[Builder Agent] Generating site "${siteName}" (stack: ${stack}) for prompt: "${prompt}"...`);
 
-  const response = await model.invoke([
+  const response = await invokeBuilderWithFallback([
     { role: 'system', content: buildSystemPrompt(stack) },
     { role: 'user', content: `Target Site: "${siteName}"\nUser Requirement: ${prompt}` }
-  ]);
+  ], signal);
 
   const raw = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
   let html = raw;
@@ -154,6 +177,10 @@ async function runBuilderAgent(siteName, prompt, stack = 'react-tailwind-cdn') {
   } else {
     html = html.replace(/```html|```/gi, '').trim();
   }
+
+  const { sanitizeGeneratedHtml } = require('../services/sanitizeHtml');
+  html = sanitizeGeneratedHtml(html, stack);
+  html = injectSafetyNet(html);
 
   const { saveSite } = require('../services/siteStore');
   saveSite(siteName, html);

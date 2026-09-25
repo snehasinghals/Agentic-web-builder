@@ -3,6 +3,8 @@ const path = require('path');
 const { ENV_PATH, getSiteIndexPath } = require('../config/paths');
 const { invokeWithKeyRotation } = require('../services/groqpool');
 
+const { injectSafetyNet, stripSafetyNet } = require('../services/visibilitySafetyNet');
+
 require('dotenv').config({ path: ENV_PATH });
 
 // Single engine: Groq (openai/gpt-oss-120b) with automatic API-key rotation
@@ -12,9 +14,9 @@ const MODEL_OPTIONS = {
   maxTokens: 12000
 };
 
-async function invokeFixerWithFallback(messages) {
+async function invokeFixerWithFallback(messages, signal) {
   console.log('[Fixer Agent] Running repair via Groq (openai/gpt-oss-120b)...');
-  return await invokeWithKeyRotation(messages, MODEL_OPTIONS);
+  return await invokeWithKeyRotation(messages, MODEL_OPTIONS, signal);
 }
 
 
@@ -28,7 +30,7 @@ SURGICAL EDIT MANDATE (READ FIRST)
 - Do not rename existing CSS variables, classes, ids, or JS function/variable names unless a reported issue specifically requires it.
 - Do not add new sections, features, or content that wasn't asked for by an issue.
 - NEVER delete, remove, or shrink existing content — including images, sections, copy, or components — as a way to "fix" or "simplify" something. A score/metric is improved by correcting or adding attributes (alt text, labels, meta tags, dimensions, contrast tweaks), never by taking content away. If you cannot find a non-destructive fix for a reported issue, leave that specific element unchanged rather than removing it.
-- If the page uses a Tailwind CDN script tag (<script src="https://cdn.tailwindcss.com">), or React/ReactDOM/Babel CDN <script> tags plus a <script type="text/babel"> app block, NEVER remove, rename, reorder, or alter those script tags — they are required for the page to render at all. Apply fixes within that structure (e.g. adjust Tailwind classes, adjust JSX) rather than converting the page to a different stack.
+- If the page uses a Tailwind CDN script tag (<script src="https://cdn.tailwindcss.com">), or React/ReactDOM/Babel CDN <script> tags plus a <script type="text/babel"> app block, NEVER remove, rename, reorder, or replace the src of those script tags — they are required for the page to render at all. The ONE exception: if any of the React/ReactDOM/Babel tags has an async or defer attribute, remove that attribute (it causes React to load out of order and crash) — this counts as a required fix, not a forbidden alteration. Apply fixes within that structure (e.g. adjust Tailwind classes, adjust JSX) rather than converting the page to a different stack.
 - Your final output must be the ENTIRE file (this is a full-file overwrite on disk), but every part not related to a listed issue must be byte-for-byte identical to the input. Treat this as applying a diff, not rewriting a document.
 
 ══════════════════════════════════════════
@@ -52,6 +54,17 @@ ACCESSIBILITY FIXES
 - Buttons and links must have descriptive text or aria-label.
 - Fix color contrast to meet WCAG AA minimum: 4.5:1 for body text, 3:1 for large text/icons.
 - Add <html lang="en"> if missing.
+
+══════════════════════════════════════════
+TEXT VISIBILITY FIXES (HIGH PRIORITY)
+══════════════════════════════════════════
+- If an issue mentions invisible, hidden, blank, or unreadable text/sections, treat it as a REQUIRED fix. Look for these causes and fix the one you find:
+  1. Light text on a missing/white background -> add a solid background-color to that section (e.g. background-color:#1e3a8a) BEFORE any gradient.
+  2. A CSS variable or Tailwind color that is not defined (e.g. var(--primary) never set, bg-primary, from-brand) -> define the variable in :root, or replace with a standard Tailwind color (bg-indigo-600).
+  3. Content that starts hidden (opacity:0, visibility:hidden, opacity-0, translate-y-* with a JS reveal) -> make it visible by default (opacity:1).
+  4. Dark text on a dark background -> change the TEXT color to light (#f8fafc). Do not change the background.
+- Fix ONLY the element(s) affected. Do not change the design of sections that are already readable.
+- The page contains a block between <!--VIS-SAFETY-START--> and <!--VIS-SAFETY-END-->. Never touch it.
 
 ══════════════════════════════════════════
 SEO FIXES
@@ -79,7 +92,8 @@ IMAGE RELIABILITY (MANDATORY, NON-DESTRUCTIVE)
 - DO NOT hardcode specific static file IDs or paths. Derive the keywords dynamically from the surrounding section content or alt text.
 - If any feature card or step icon uses an <img> tag pointing to a placeholder image, replace it with a clean inline SVG icon (<svg width="24" height="24" ...>) or Unicode emoji. Never allow "Image" or "Icon" placeholder text to display on screen.
 - Ensure every <img> has a dynamic, safe fallback:
-  onerror="this.onerror=null;this.src='https://picsum.photos/800/600?random=1';"
+  * For plain HTML stacks: onerror="this.onerror=null;this.src='https://picsum.photos/800/600?random=1';"
+  * For React stacks (react-cdn, react-tailwind-cdn — check the Stack given in the task and whether the code uses JSX/className): onError={(e) => { e.target.onerror = null; e.target.src = 'https://picsum.photos/800/600?random=1'; }} — a JSX function handler, NEVER a quoted string. Writing onError as a string throws "Minified React error #231" and crashes the entire app. If you see this exact runtime error reported, search for any onError="..." string attribute and convert it to the function form above.
 - Ensure all image containers use object-fit: cover with a defined height/aspect-ratio.
 
 ══════════════════════════════════════════
@@ -99,12 +113,19 @@ BEST PRACTICES
 - No inline event handlers beyond the required onerror on images.
 - No deprecated HTML attributes.`;
 
-async function runFixerAgent(siteName, issues = [], runtimeErrors = [], stack = 'react-tailwind-cdn') {
+async function runFixerAgent(siteName, issues = [], runtimeErrors = [], stack = 'react-tailwind-cdn', signal) {
+  if (signal?.aborted) {
+    const err = new Error('Aborted by user');
+    err.name = 'AbortError';
+    throw err;
+  }
+
   console.log(`\n[Fixer Agent] Repairing site "${siteName}" (stack: ${stack}) based on critic findings...`);
 
   const { getSiteHtml, saveSite } = require('../services/siteStore');
   const diskPath = getSiteIndexPath(siteName);
-  const currentHtml = getSiteHtml(siteName) || (fs.existsSync(diskPath) ? fs.readFileSync(diskPath, 'utf-8') : '');
+  const rawHtml = getSiteHtml(siteName) || (fs.existsSync(diskPath) ? fs.readFileSync(diskPath, 'utf-8') : '');
+  const currentHtml = stripSafetyNet(rawHtml);
   if (!currentHtml) {
     throw new Error(`Cannot fix site "${siteName}": no code found in memory or storage.`);
   }
@@ -132,7 +153,7 @@ Fix ONLY the issues listed above (plus the mandatory image-reliability rule). Do
   const response = await invokeFixerWithFallback([
     { role: 'system', content: FIXER_SYSTEM_PROMPT },
     { role: 'user', content: userPrompt }
-  ]);
+  ], signal);
 
   const raw = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
   let updatedHtml = raw;
@@ -148,6 +169,11 @@ Fix ONLY the issues listed above (plus the mandatory image-reliability rule). Do
     console.warn(`[Fixer Agent] WARNING: Model returned only ${updatedHtml.length} chars — likely empty/reasoning-only response. Keeping original HTML.`);
     updatedHtml = currentHtml;
   }
+
+  const { sanitizeGeneratedHtml } = require('../services/sanitizeHtml');
+  updatedHtml = sanitizeGeneratedHtml(updatedHtml, stack);
+  updatedHtml = injectSafetyNet(updatedHtml);   // <-- add
+
 
   saveSite(siteName, updatedHtml);
   console.log(`[Fixer Agent] Updated site "${siteName}" saved in-memory & ephemeral storage (${updatedHtml.length} chars).`);

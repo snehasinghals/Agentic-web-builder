@@ -19,6 +19,7 @@
   "license": "ISC",
   "description": "Multi-agent AI Website Builder with real-time browser preview studio",
   "dependencies": {
+    "@babel/parser": "^7.29.9",
     "@google/genai": "^2.22.0",
     "@langchain/core": "^1.2.11",
     "@langchain/google-genai": "^2.3.2",

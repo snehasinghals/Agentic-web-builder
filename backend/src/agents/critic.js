@@ -1,22 +1,31 @@
 const fs = require('fs');
 const path = require('path');
-const { ChatGroq } = require('@langchain/groq');
 const { auditSite } = require('../services/lighthouse');
 const { verifySite } = require('../services/playwright');
 const { getSiteIndexPath } = require('../config/paths');
 const { ENV_PATH } = require('../config/paths');
+const { invokeWithKeyRotation } = require('../services/groqpool');
 
 require('dotenv').config({ path: ENV_PATH });
 
-const model = new ChatGroq({
+const MODEL_OPTIONS = {
   model: 'openai/gpt-oss-120b',
   temperature: 0.1,
-  maxTokens: 4000,
-  maxRetries: 5,
-  apiKey: process.env.GROQ_API_KEY2 || process.env.GROQ_API_KEY1 || process.env.GROQ_API_KEY3
-});
+  maxTokens: 4000
+};
 
-async function runCriticAgent(siteName) {
+async function invokeCriticWithFallback(messages, signal) {
+  console.log('[Critic Agent] Synthesizing issues via Groq (openai/gpt-oss-120b)...');
+  return await invokeWithKeyRotation(messages, MODEL_OPTIONS, signal);
+}
+
+async function runCriticAgent(siteName,signal) {
+  if (signal?.aborted) {
+    const err = new Error('Aborted by user');
+    err.name = 'AbortError';
+    throw err;
+  }
+
   console.log(`\n[Critic Agent] Auditing site "${siteName}" using Playwright and Lighthouse...`);
   const filePath = getSiteIndexPath(siteName);
 
@@ -46,23 +55,39 @@ async function runCriticAgent(siteName) {
     ...(playwrightResult.consoleErrors || [])
   ];
   const runtimeErrors = [...new Set(rawRuntimeErrors)];
+  const visibilityIssues = (playwrightResult.visibilityIssues || []).map(v => ({
+    locatorId: v.locatorId,
+    category: 'accessibility',
+    problem: v.message,
+    suggestion: 'Make this text visible: add a solid background-color for light text, or make the text color dark/light so contrast is at least 4.5:1. Do not change other sections.'
+  }));
 
-  // Extract top failing audits from Lighthouse
-  const failingAudits = Object.values(lighthouseResult.fullReport?.audits || {})
-    .filter(a => a.score !== null && a.score < 0.9)
-    .map(a => ({
+    // Extract top failing audits from Lighthouse
+  const failingAudits = Object.entries(lighthouseResult.fullReport?.audits || {})
+    .filter(([, a]) => a.score !== null && a.score < 0.9)
+    .map(([auditId, a]) => ({
+      auditId,
       title: a.title,
       description: a.description ? a.description.slice(0, 160) : '',
       score: Math.round((a.score || 0) * 100)
     }))
     .slice(0, 5);
 
+  const auditIssues = failingAudits.map(a => ({
+    auditId: a.auditId,
+    category: 'performance',
+    problem: a.title,
+    suggestion: a.description || 'Improve implementation to satisfy this audit.'
+  }));
+  
   const passed = (
     scores.performance >= 85 &&
     scores.accessibility >= 85 &&
     scores.bestPractices >= 85 &&
     scores.seo >= 85 &&
-    runtimeErrors.length === 0
+    runtimeErrors.length === 0 &&
+    visibilityIssues.length === 0     // <-- add
+
   );
 
   // Fast path: if quality threshold is met and no runtime errors, skip LLM call
@@ -125,18 +150,14 @@ SCHEMA:
     scores,
     runtimeErrors,
     passed,
-    issues: failingAudits.map(a => ({
-      category: 'performance',
-      problem: a.title,
-      suggestion: a.description || 'Improve implementation to satisfy this audit.'
-    }))
+    issues: [...visibilityIssues, ...auditIssues]
   };
 
   try {
-    const response = await model.invoke([
+    const response = await invokeCriticWithFallback([
       { role: 'system', content: 'You are a web QA critic. Always output a valid JSON object inside a ```json ... ``` block. Never call tools.' },
       { role: 'user', content: CRITIC_PROMPT }
-    ]);
+    ], signal);
 
     content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
 
@@ -147,8 +168,8 @@ SCHEMA:
       structuredReport = {
         scores: parsed.scores || scores,
         runtimeErrors: parsed.runtimeErrors || runtimeErrors,
-        passed: parsed.passed !== undefined ? parsed.passed : passed,
-        issues: parsed.issues || structuredReport.issues
+        passed: visibilityIssues.length === 0 && (parsed.passed !== undefined ? parsed.passed : passed),
+        issues: [...visibilityIssues, ...(parsed.issues || auditIssues)]
       };
     }
   } catch (err) {
@@ -166,4 +187,3 @@ SCHEMA:
 const criticAgent = { invoke: async () => ({ messages: [{ content: 'OK' }] }) };
 
 module.exports = { criticAgent, runCriticAgent };
-

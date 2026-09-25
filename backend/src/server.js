@@ -6,7 +6,7 @@ const { app: langGraphApp, setWorkflowEventEmitter } = require('./graph/workflow
 const { runModifierAgent } = require('./agents/modifier');
 const { deployToVercel } = require('./services/vercelDeploy');
 const { startPreview, triggerReload, PREVIEW_PORT } = require('./services/previewServer');
-const { buildTagMap } = require('./services/htmlMap');
+const { buildTagMap, htmlVersion } = require('./services/htmlMap');
 const {
   PROJECT_ROOT,
   FRONTEND_DIR,
@@ -33,6 +33,28 @@ setWorkflowEventEmitter(workflowEvents);
 
 // Track connected SSE dashboard clients
 let sseClients = [];
+
+// Track in-flight runs per site so /api/stop can actually cancel them
+const activeRuns = new Map(); // siteName -> { controller: AbortController }
+
+// Track which stack each site was built with, so later /api/modify calls
+// know what to sanitize/preserve (Tailwind CDN, React CDN, etc.)
+const siteStacks = new Map(); // siteName -> stack string
+function startRun(siteName) {
+  stopRun(siteName, false); // cancel any stale run for this site first
+  const controller = new AbortController();
+  activeRuns.set(siteName, { controller });
+  return controller;
+}
+
+function stopRun(siteName, notify = true) {
+  const run = activeRuns.get(siteName);
+  if (!run) return false;
+  try { run.controller.abort(); } catch (e) {}
+  activeRuns.delete(siteName);
+  if (notify) broadcastToClients('workflow_stopped', { siteName });
+  return true;
+}
 
 function broadcastToClients(type, payload) {
   const data = JSON.stringify({ type, data: payload, timestamp: Date.now() });
@@ -137,6 +159,7 @@ const server = http.createServer(async (req, res) => {
       const maxIterations = Number(body.maxIterations) || 2;
       const ALLOWED_STACKS = ['html-css-js', 'html-tailwind', 'react-cdn', 'react-tailwind-cdn'];
       const stack = ALLOWED_STACKS.includes(body.stack) ? body.stack : 'react-tailwind-cdn';
+      siteStacks.set(siteName, stack);  
 
       // Start the preview server early so URL is immediately available
       await startPreview(siteName, false);
@@ -150,7 +173,8 @@ const server = http.createServer(async (req, res) => {
         message: 'Generation started'
       }));
 
-      // Launch workflow asynchronously
+            // Launch workflow asynchronously
+      const controller = startRun(siteName);
       broadcastToClients('workflow_started', { prompt, siteName, maxIterations, stack, previewUrl });
 
       (async () => {
@@ -160,7 +184,7 @@ const server = http.createServer(async (req, res) => {
             siteName,
             maxIterations,
             stack
-          });
+          }, { signal: controller.signal });
 
           broadcastToClients('workflow_finished', {
             siteName,
@@ -170,8 +194,14 @@ const server = http.createServer(async (req, res) => {
             previewUrl
           });
         } catch (err) {
-          console.error('[Workflow Error]:', err);
-          broadcastToClients('workflow_error', { error: err.message || 'Workflow execution error' });
+          if (controller.signal.aborted) {
+            console.log(`[Workflow] Stopped by user: ${siteName}`);
+          } else {
+            console.error('[Workflow Error]:', err);
+            broadcastToClients('workflow_error', { error: err.message || 'Workflow execution error' });
+          }
+        } finally {
+          activeRuns.delete(siteName);
         }
       })();
 
@@ -183,7 +213,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- API: Apply Targeted Modifications to Existing Site ---
-  if (pathname === '/api/modify' && req.method === 'POST') {
+    if (pathname === '/api/modify' && req.method === 'POST') {
     try {
       const body = await parseBody(req);
       const siteName = (body.siteName || 'site1').trim();
@@ -208,6 +238,7 @@ const server = http.createServer(async (req, res) => {
         message: 'Modifications in progress'
       }));
 
+      const controller = startRun(siteName);
       broadcastToClients('modification_started', {
         siteName,
         prompt: modificationPrompt
@@ -219,10 +250,10 @@ const server = http.createServer(async (req, res) => {
             node: 'modifier',
             message: `Applying requested modifications to "${siteName}"...`
           });
+          const stack = siteStacks.get(siteName) || 'react-tailwind-cdn';  
+          const result = await runModifierAgent(siteName, modificationPrompt, stack, controller.signal);  
+          if (controller.signal.aborted) return;
 
-          const result = await runModifierAgent(siteName, modificationPrompt);
-
-          // Trigger live reload on right-side iframe preview
           triggerReload();
 
           broadcastToClients('site_reloaded', {
@@ -235,13 +266,35 @@ const server = http.createServer(async (req, res) => {
             message: 'Modifications successfully applied!'
           });
         } catch (err) {
-          console.error('[Modifier Error]:', err);
-          broadcastToClients('workflow_error', {
-            error: err.message || 'Failed to apply modifications'
-          });
+          if (controller.signal.aborted) {
+            console.log(`[Modifier] Stopped by user: ${siteName}`);
+          } else {
+            console.error('[Modifier Error]:', err);
+            broadcastToClients('workflow_error', {
+              error: err.message || 'Failed to apply modifications'
+            });
+          }
+        } finally {
+          activeRuns.delete(siteName);
         }
       })();
 
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+
+    // --- API: Stop an in-progress generation/modification ---
+  if (pathname === '/api/stop' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const siteName = (body.siteName || '').trim();
+      const wasRunning = stopRun(siteName);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, stopped: wasRunning }));
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
@@ -343,7 +396,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ tags: buildTagMap(html) }));
+    res.end(JSON.stringify({ tags: buildTagMap(html), version: htmlVersion(html) }));
     return;
   }
 

@@ -14,6 +14,7 @@ function getPool() {
     process.env.GROQ_API_KEY3,
     process.env.GROQ_API_KEY4,
     process.env.GROQ_API_KEY5,
+    process.env.GROQ_API_KEY6,
     process.env.GROQ_API_KEY,
   ].filter(Boolean);
 
@@ -49,12 +50,18 @@ function cooldownFor(err) {
  * @param {Array} messages  LangChain/OpenAI-style messages
  * @param {Object} modelOptions  ChatGroq options WITHOUT apiKey (model, temperature, maxTokens...)
  */
-async function invokeWithKeyRotation(messages, modelOptions) {
+async function invokeWithKeyRotation(messages, modelOptions, signal) {
   const p = getPool();
   const total = p.entries.length;
   let lastErr;
 
   for (let attempt = 0; attempt < total; attempt++) {
+    if (signal?.aborted) {
+      const err = new Error('Aborted by user');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     const idx = (p.current + attempt) % total;
     const entry = p.entries[idx];
 
@@ -62,12 +69,12 @@ async function invokeWithKeyRotation(messages, modelOptions) {
 
     try {
       const model = new ChatGroq({ ...modelOptions, apiKey: entry.key, maxRetries: 0 });
-      const res = await model.invoke(messages);
+      const res = await model.invoke(messages, { signal });
       p.current = idx; // stick with the key that works
       return res;
     } catch (err) {
       lastErr = err;
-      if (!isRotatable(err)) throw err; // e.g. bad request: another key won't help
+      if (!isRotatable(err)) throw err; // e.g. bad request, or AbortError: another key won't help
 
       entry.blockedUntil = Date.now() + cooldownFor(err);
       console.warn(`[Groq] Key #${entry.id} unavailable (${err.status || ''} ${err.message}). Switching to next key...`);

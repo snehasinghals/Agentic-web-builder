@@ -11,6 +11,90 @@
 </head>
 <body>
   <div class="app-container">
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+    <!-- "Your website is generated" — centered modal popup with 3 actions -->
+    <div class="choice-modal" id="postGenChoiceBanner">
+      <div class="choice-modal-card">
+        <button type="button" class="choice-modal-close" id="btnCloseChoiceBanner" title="Close">✕</button>
+
+        <div class="choice-banner-header">
+          <div class="choice-icon-wrap">
+            <span class="choice-icon">🎉</span>
+          </div>
+          <div class="choice-text">
+            <h5>Your Website is Generated!</h5>
+            <p>What would you like to do next?</p>
+          </div>
+        </div>
+
+        <div class="choice-buttons choice-buttons-stack">
+          <button type="button" class="btn-choice active" id="btnChoiceModify">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+            <span>Continue Editing</span>
+          </button>
+          <button type="button" class="btn-choice" id="btnChoiceNew">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Generate New Website</span>
+          </button>
+          <button type="button" class="btn-choice" id="btnChoicePublish">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+              <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+              <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+              <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+            </svg>
+            <span>Publish Website</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="choice-modal" id="deployModal">
+      <div class="choice-modal-card deploy-modal-card">
+        <button type="button" class="choice-modal-close hidden" id="btnCloseDeployModal" title="Close">✕</button>
+
+        <div class="choice-banner-header">
+          <div class="choice-icon-wrap"><span class="choice-icon" id="deployModalIcon">🚀</span></div>
+          <div class="choice-text">
+            <h5 id="deployModalTitle">Publishing Your Website</h5>
+            <p id="deployModalSubtitle">Sit tight — this only takes a moment.</p>
+          </div>
+        </div>
+
+        <!-- Step progress (shown while deploying) -->
+        <ul class="deploy-step-list" id="deployStepList"></ul>
+
+        <!-- Success state -->
+        <div class="deploy-url-box hidden" id="deployUrlBox">
+          <div class="deploy-url-row">
+            <span id="deployUrlText"></span>
+            <button type="button" class="thread-icon-btn" id="btnCopyDeployUrl" title="Copy">📋</button>
+          </div>
+          <div class="deploy-modal-actions">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="btn-choice active" id="btnOpenDeployUrl">Open Live Site ↗</a>
+            <button type="button" class="btn-choice" id="btnDeployModalOk">OK</button>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div class="deploy-error-box hidden" id="deployErrorBox">
+          <p id="deployErrorText"></p>
+          <div class="deploy-modal-actions">
+            <button type="button" class="btn-choice" id="btnRetryDeploy">Retry</button>
+            <button type="button" class="btn-choice" id="btnCloseDeployError">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
     <!-- Top Navigation Bar -->
     <header class="top-nav">
       <div class="brand">
@@ -28,51 +112,16 @@
         </div>
       </div>
 
-      <!-- Center Device Switcher (Floating Segmented Pill) -->
-      <div class="device-switcher" id="deviceSwitcher">
-        <button class="device-btn active" data-device="desktop" title="Desktop View (Full Width)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect width="20" height="14" x="2" y="3" rx="2"/>
-            <line x1="8" x2="16" y1="21" y2="21"/>
-            <line x1="12" x2="12" y1="17" y2="21"/>
-          </svg>
-          <span>Desktop</span>
-        </button>
-        <button class="device-btn" data-device="tablet" title="Tablet View (768px)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect width="16" height="20" x="4" y="2" rx="2"/>
-            <line x1="12" x2="12.01" y1="18" y2="18"/>
-          </svg>
-          <span>Tablet</span>
-        </button>
-        <button class="device-btn" data-device="mobile" title="Mobile View (375px)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect width="14" height="20" x="5" y="2" rx="2"/>
-            <line x1="12" x2="12.01" y1="18" y2="18"/>
-          </svg>
-          <span>Mobile</span>
-        </button>
-      </div>
 
       <!-- Top Nav Action Buttons -->
       <div class="nav-actions">
-        <button class="nav-btn" id="btnRefreshPreview" title="Reload Live Canvas">
+        <button class="nav-btn" id="btnNewSiteTop" title="Start a brand new website project">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-            <path d="M16 21h5v-5"/>
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span class="nav-btn-label">Refresh</span>
+          <span class="nav-btn-label">New Website</span>
         </button>
-        <a class="nav-btn" id="btnExternalPreview" href="#" target="_blank" title="Open Fullscreen Site">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15 3h6v6"/>
-            <path d="M10 14 21 3"/>
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-          </svg>
-          <span class="nav-btn-label">Open Live</span>
-        </a>
       </div>
     </header>
 
@@ -81,6 +130,18 @@
       <!-- LEFT SIDEBAR: Creation Studio, Quality & Export -->
       <aside class="left-panel">
         <!-- Panel Tabs with Icons -->
+         <div class="drawer-header">
+          <div class="drawer-title">
+            <span class="drawer-title-icon">✨</span>
+            <span>Lumina Studio</span>
+          </div>
+          <button type="button" class="thread-icon-btn" id="btnCloseDrawer" title="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
         <div class="panel-tabs">
           <button class="panel-tab active" data-tab="studio">
             <span class="tab-icon">✨</span>
@@ -97,48 +158,8 @@
         </div>
 
         <div class="panel-content">
-          <!-- TAB 1: STUDIO (Prompt & Autonomous Pipeline) -->
+                    <!-- TAB 1: STUDIO (Prompt & Autonomous Pipeline) -->
           <div class="tab-pane active" id="pane-studio">
-            
-            <!-- Post-Generation Celebration Banner -->
-            <div class="choice-banner" id="postGenChoiceBanner">
-              <div class="choice-banner-header">
-                <div class="choice-icon-wrap">
-                  <span class="choice-icon">🎉</span>
-                </div>
-                <div class="choice-text">
-                  <h5>Your Website is Live & Ready!</h5>
-                  <p>Fine-tune with natural language edits, launch to a live URL, or start fresh.</p>
-                </div>
-              </div>
-              <div class="choice-buttons">
-                <button type="button" class="btn-choice active" id="btnChoiceModify">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                  <span>Edit / Customize</span>
-                </button>
-                <button type="button" class="btn-choice" id="btnChoiceNew">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  <span>Create New Site</span>
-                </button>
-                <button type="button" class="btn-choice btn-deploy" id="btnChoiceDeploy">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
-                    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
-                    <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
-                    <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
-                  </svg>
-                  <span class="deploy-btn-text">Publish to Vercel (Live URL)</span>
-                  <span class="deploy-spinner hidden"></span>
-                </button>
-              </div>
-              <div class="deploy-status hidden" id="deployStatus"></div>
-            </div>
 
             <!-- Active Mode Status Bar -->
             <div class="mode-indicator" id="modeIndicator">
@@ -146,16 +167,39 @@
                 <span class="mode-dot"></span>
                 <span id="modeText">Creation Studio</span>
               </div>
-              <div class="target-site-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-                <span id="activeSiteTarget" class="active-site-target">Project: site1</span>
+              <div class="mode-indicator-right">
+                <div class="target-site-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <span id="activeSiteTarget" class="active-site-target">Project: site1</span>
+                </div>
+                <!-- "New Website" pill removed from here on purpose — use the top-nav "New Website" button instead -->
               </div>
             </div>
 
-            <!-- Main Prompt Input Section -->
+            <!-- AI Build Conversation — hidden until Generate/Apply is pressed, so it
+                 only ever shows the live "thinking" / processing steps -->
+            <div class="ai-thread-card hidden" id="aiThreadCard">
+              <div class="ai-thread-header">
+                <div class="ai-thread-header-title">
+                  <span class="pulse-dot"></span>
+                  <h4>Lumina</h4>
+                </div>
+                <div class="ai-thread-header-actions">
+                  <span id="pipelineStatusBadge" class="status-pill idle">Idle</span>
+                </div>
+              </div>
+              <div class="ai-thread-body" id="aiThreadBody">
+                <div class="ai-thread-placeholder" id="aiThreadPlaceholder">
+                  Describe your dream website below and hit Generate — I'll think it through step by step, right here.
+                </div>
+              </div>
+            </div>
+
+            <!-- Main Prompt Input Section — now a self-contained composer:
+                 the Generate / Apply Changes action lives INSIDE this box -->
             <div class="form-group prompt-group">
               <div class="field-label-row">
                 <label for="promptInput" id="lblPromptInput">
@@ -165,13 +209,25 @@
               </div>
 
               <div class="textarea-container">
-                <textarea id="promptInput" rows="4" placeholder="Describe the website you want to build..."></textarea>
+                <div class="textarea-box">
+                  <textarea id="promptInput" rows="2" placeholder="Describe the website you want to build..."></textarea>
+
+                  <button id="btnGenerate" class="btn-composer-send" type="button" title="Generate Website">
+                    <span class="composer-send-icon">
+                      <svg class="icon-send" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                        <polyline points="5 12 12 5 19 12"></polyline>
+                      </svg>
+                      <span class="icon-stop"></span>
+                    </span>
+                  </button>
+                </div>
                 <div class="prompt-meta-hint">Press Generate to build layout, styling, and copy automatically.</div>
               </div>
             </div>
 
             <!-- Collapsible Settings Accordion (Keeps UI clean for non-developers) -->
-            <details class="settings-accordion">
+            <details class="settings-accordion" id="settingsAccordion">
               <summary class="settings-summary">
                 <div class="settings-summary-title">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -213,88 +269,7 @@
                 </div>
               </div>
             </details>
-
-            <!-- Primary Generate Action Button -->
-            <button id="btnGenerate" class="btn-primary">
-              <span class="btn-glow"></span>
-              <span class="btn-content">
-                <svg class="sparkle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-                </svg>
-                <span class="btn-text">Generate Website</span>
-                <span class="btn-spinner hidden"></span>
-              </span>
-            </button>
-
-            <!-- Autonomous Design Pipeline -->
-            <div class="agent-pipeline-card">
-              <div class="pipeline-header">
-                <div class="pipeline-header-title">
-                  <span class="pulse-dot"></span>
-                  <h4>Creation Stages</h4>
-                </div>
-                <span id="pipelineStatusBadge" class="status-pill idle">Idle</span>
-              </div>
-              <div class="pipeline-steps">
-                <div class="pipe-step" id="stepBuilder">
-                  <div class="pipe-dot">
-                    <span class="dot-inner"></span>
-                  </div>
-                  <div class="pipe-info">
-                    <span class="pipe-title">1. Layout & Architecture</span>
-                    <span class="pipe-sub" id="subBuilder">Ready to generate structure & copy</span>
-                  </div>
-                </div>
-                <div class="pipe-step" id="stepCritic">
-                  <div class="pipe-dot">
-                    <span class="dot-inner"></span>
-                  </div>
-                  <div class="pipe-info">
-                    <span class="pipe-title">2. Quality & SEO Inspection</span>
-                    <span class="pipe-sub" id="subCritic">Testing mobile layout & accessibility</span>
-                  </div>
-                </div>
-                <div class="pipe-step" id="stepFixer">
-                  <div class="pipe-dot">
-                    <span class="dot-inner"></span>
-                  </div>
-                  <div class="pipe-info">
-                    <span class="pipe-title">3. Automated Polishing</span>
-                    <span class="pipe-sub" id="subFixer">Refining visuals, contrast & styles</span>
-                  </div>
-                </div>
-                <div class="pipe-step hidden" id="stepModifier">
-                  <div class="pipe-dot">
-                    <span class="dot-inner"></span>
-                  </div>
-                  <div class="pipe-info">
-                    <span class="pipe-title">🎨 Custom Refinement</span>
-                    <span class="pipe-sub" id="subModifier">Applying targeted visual updates...</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Live Design Activity Feed -->
-            <div class="live-activity-card">
-              <div class="activity-header">
-                <div class="activity-header-title">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                  </svg>
-                  <h4>Live Activity</h4>
-                </div>
-                <button id="btnClearLogs" class="btn-text-link">Clear</button>
-              </div>
-              <div class="activity-feed" id="activityFeed">
-                <div class="activity-item system">
-                  <span class="time">Ready</span>
-                  <span class="msg">Describe your dream website above and click Generate.</span>
-                </div>
-              </div>
-            </div>
           </div>
-
           <!-- TAB 2: AUDIT & SCORES -->
           <div class="tab-pane" id="pane-audit">
             <div class="scores-summary">
@@ -355,7 +330,7 @@
             </div>
           </div>
 
-                    <!-- TAB 3: CODE SOURCE (editable) -->
+          <!-- TAB 3: CODE SOURCE (editable) -->
           <div class="tab-pane" id="pane-code">
             <div class="code-header-banner">
               <div class="code-banner-text">
@@ -393,23 +368,38 @@
           </div>
         </div>
       </aside>
+      <div class="panel-resizer" id="panelResizer" title="Drag to resize"></div>
+
 
       <!-- RIGHT CANVAS: Live Interactive Preview Viewport -->
       <section class="preview-panel">
         <div class="preview-toolbar">
-          <div class="preview-url-bar">
-            <span class="url-badge">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
-              <span>SECURE</span>
-            </span>
-            <input type="text" id="previewUrlDisplay" readonly value="http://localhost:3456/site1/" />
-          </div>
           <div class="preview-status" id="previewStatus">
-            <span class="status-dot green"></span>
-            <span>Live Preview Active</span>
+              <span class="status-dot green"></span>
+              <span>Live Preview Active</span>
+          </div>
+          <div class="preview-toolbar-right">          
+
+            <!-- Publish button — hidden until a site actually exists -->
+            <div class="publish-wrap publish-wrap-row">
+              <button type="button" class="btn-republish hidden" id="btnRepublish" title="Push your latest changes to the live site">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+                <span>Republish</span>
+              </button>
+              <button type="button" class="btn-publish-top hidden" id="btnChoiceDeploy" title="Puts your website online with a shareable link, hosted on Vercel.">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path>
+                  <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path>
+                  <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path>
+                  <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path>
+                </svg>
+                <span class="deploy-btn-text">Publish Website (Get Live Link)</span>
+                <span class="deploy-spinner hidden"></span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -441,8 +431,7 @@
                     <div class="idle-glow"></div>
                   </div>
                   <h3>Your Dream Website Awaits</h3>
-                  <p>Describe your vision on the left or select a quick starter chip. Lumina will build, audit, and polish your website live.</p>
-                  <div class="idle-feature-cards">
+                    <p>Describe your vision in the chat or select a quick starter chip. Lumina will build, audit, and polish your website live.</p>                  <div class="idle-feature-cards">
                     <div class="idle-feature-card">
                       <span class="feature-emoji">🎨</span>
                       <div class="feature-title">Modern Design</div>
@@ -503,6 +492,12 @@
             </div>
           </div>
         </div>
+        <button type="button" class="btn-chat-to-edit" id="btnChatToEdit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>Chat to Edit</span>
+      </button>
       </section>
     </main>
   </div>
