@@ -2,11 +2,13 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const EventEmitter = require('events');
+const httpProxy = require('http-proxy');
 const { app: langGraphApp, setWorkflowEventEmitter } = require('./graph/workflow');
 const { runModifierAgent } = require('./agents/modifier');
 const { deployToVercel } = require('./services/vercelDeploy');
 const { startPreview, triggerReload, PREVIEW_PORT } = require('./services/previewServer');
 const { buildTagMap, htmlVersion } = require('./services/htmlMap');
+const { toFriendlyError } = require('./services/friendlyError');
 const {
   PROJECT_ROOT,
   FRONTEND_DIR,
@@ -117,6 +119,19 @@ function parseBody(req) {
   });
 }
 
+const previewProxy = httpProxy.createProxyServer();
+
+previewProxy.on('error', (err, req, res) => {
+  console.error('[Preview Proxy Error]:', err.message);
+  if (!res.headersSent) {
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+  }
+  res.end('Preview server unavailable');
+});
+
+// Start the preview server once, when the main server boots
+startPreview('boot', false);
+
 // HTTP Server
 const server = http.createServer(async (req, res) => {
   // Enable CORS
@@ -132,6 +147,13 @@ const server = http.createServer(async (req, res) => {
 
   const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = parsedUrl.pathname;
+
+  // --- Reverse proxy: forward /preview/* to the internal preview server ---
+  if (pathname.startsWith('/preview/') || pathname === '/preview') {
+    req.url = req.url.replace(/^\/preview/, '') || '/';
+    previewProxy.web(req, res, { target: `http://localhost:${PREVIEW_PORT}` });
+    return;
+  }
 
   // --- API: Real-Time SSE Stream ---
   if (pathname === '/api/stream' && req.method === 'GET') {
@@ -162,8 +184,8 @@ const server = http.createServer(async (req, res) => {
       siteStacks.set(siteName, stack);  
 
       // Start the preview server early so URL is immediately available
-      await startPreview(siteName, false);
-      const previewUrl = `http://localhost:${PREVIEW_PORT}/${siteName}/`;
+      await startPreview(siteName, false); // idempotent — already running from boot
+      const previewUrl = `/preview/${siteName}/`;
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -197,8 +219,8 @@ const server = http.createServer(async (req, res) => {
           if (controller.signal.aborted) {
             console.log(`[Workflow] Stopped by user: ${siteName}`);
           } else {
-            console.error('[Workflow Error]:', err);
-            broadcastToClients('workflow_error', { error: err.message || 'Workflow execution error' });
+            console.error('[Workflow Error]:', err); // full raw error stays in server logs
+            broadcastToClients('workflow_error', { error: toFriendlyError(err) });
           }
         } finally {
           activeRuns.delete(siteName);
@@ -211,6 +233,8 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
+
+  // --- API: Apply Targeted Modifications to Existing Site ---
 
   // --- API: Apply Targeted Modifications to Existing Site ---
     if (pathname === '/api/modify' && req.method === 'POST') {
@@ -269,9 +293,9 @@ const server = http.createServer(async (req, res) => {
           if (controller.signal.aborted) {
             console.log(`[Modifier] Stopped by user: ${siteName}`);
           } else {
-            console.error('[Modifier Error]:', err);
+            console.error('[Modifier Error]:', err); // full raw error stays in server logs
             broadcastToClients('workflow_error', {
-              error: err.message || 'Failed to apply modifications'
+              error: toFriendlyError(err)
             });
           }
         } finally {
@@ -325,9 +349,9 @@ const server = http.createServer(async (req, res) => {
         deploymentId: result.deploymentId
       }));
     } catch (err) {
-      console.error('[Server Deploy Error]:', err);
+      console.error('[Server Deploy Error]:', err); // full raw error stays in server logs
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message || 'Deployment failed' }));
+      res.end(JSON.stringify({ error: toFriendlyError(err) }));
     }
     return;
   }

@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const initialSite = siteNameInput.value.trim() || 'site1';
   currentSite = initialSite;
   activeSiteTarget.textContent = `Project: ${initialSite}`;
-  previewUrlDisplay.value = `http://localhost:3456/${initialSite}/`;
+  previewUrlDisplay.value = `/preview/${siteName}/`;
   frameTitle.textContent = `${initialSite} • Live Preview`;
   showIdleOverlay();
   updateSettingsVisibility();
@@ -539,7 +539,7 @@ function setMode(mode) {
 function updatePreviewUrl(siteName) {
   currentSite = siteName;
   activeSiteTarget.textContent = `Project: ${siteName}`;
-  const url = `http://localhost:3456/${siteName}/`;
+  const url = `/preview/${siteName}/`;
   previewIframe.src = url;
   frameTitle.textContent = `${siteName} • Live Preview`;
 
@@ -1551,7 +1551,7 @@ async function stopGeneration() {
   }
 }
 
-const PREVIEW_ORIGIN = 'http://localhost:3456';
+const PREVIEW_ORIGIN = '/preview/${siteName}/';
 let inspectMode = false;
 
 function sendToPreview(msg) {

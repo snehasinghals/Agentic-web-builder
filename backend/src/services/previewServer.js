@@ -16,13 +16,13 @@ const LIVE_RELOAD_SNIPPET = `
 <!-- Live Reload (injected by preview server) -->
 <script>
 (function() {
-  var es = new EventSource('/__sse');
+  var es = new EventSource('/preview/__sse');
   es.addEventListener('reload', function() {
     window.location.reload();
   });
   es.onerror = function() {
     setTimeout(function() {
-      es = new EventSource('/__sse');
+      var es = new EventSource('/preview/__sse'); 
       es.addEventListener('reload', function() { window.location.reload(); });
     }, 2000);
   };

@@ -27,8 +27,10 @@
     "@langchain/langgraph": "^1.4.15",
     "@langchain/openai": "^1.5.13",
     "chrome-launcher": "^1.2.1",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.6.0",
+    "http-proxy": "^1.18.1",
     "lighthouse": "^12.8.2",
     "playwright": "^1.63.0"
   }
