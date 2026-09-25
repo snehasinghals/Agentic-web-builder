@@ -1,4 +1,3 @@
-const lighthouse = require('lighthouse').default || require('lighthouse');
 const chromeLauncher = require('chrome-launcher');
 const http = require('http');
 const fs = require('fs');
@@ -36,6 +35,8 @@ function serveFolder(folderPath) {
 }
 
 async function auditSite(filePath) {
+    const { default: lighthouse } = await import('lighthouse');
+
     const folderPath = path.dirname(filePath);
 
     let server;
