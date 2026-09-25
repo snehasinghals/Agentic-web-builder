@@ -25,7 +25,6 @@ const {
 } = require('./services/siteStore');
 
 require('dotenv').config({ path: ENV_PATH });
-console.log('Playwright chromium path:', require('playwright').chromium.executablePath());
 
 const PORT = process.env.PORT || 3000;
 
