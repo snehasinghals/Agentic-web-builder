@@ -4,6 +4,14 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+// lighthouse.js
+const { chromium } = require('playwright');
+
+chrome = await chromeLauncher.launch({
+    chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu'],
+    chromePath: process.env.CHROME_PATH || chromium.executablePath()
+});
+
 function serveFolder(folderPath) {
     const server = http.createServer((req, res) => {
         const filePath = path.join(folderPath, req.url === '/' ? 'index.html' : req.url);

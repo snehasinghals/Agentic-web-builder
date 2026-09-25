@@ -1,3 +1,22 @@
+// backend/src/server.js
+
+// ─── Crash guards: MUST be first, before any other code ───
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL — recovered] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL — recovered] Unhandled rejection:', reason);
+});
+// ─────────────────────────────────────────────────────────
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const EventEmitter = require('events');
+const httpProxy = require('http-proxy');
+const { app: langGraphApp, setWorkflowEventEmitter } = require('./graph/workflow');
+// ... rest of your file unchanged
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
