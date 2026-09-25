@@ -174,7 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const initialSite = siteNameInput.value.trim() || 'site1';
   currentSite = initialSite;
   activeSiteTarget.textContent = `Project: ${initialSite}`;
-  previewUrlDisplay.value = `/preview/${siteName}/`;
   frameTitle.textContent = `${initialSite} • Live Preview`;
   showIdleOverlay();
   updateSettingsVisibility();
@@ -1551,7 +1550,7 @@ async function stopGeneration() {
   }
 }
 
-const PREVIEW_ORIGIN = '/preview/${siteName}/';
+const PREVIEW_ORIGIN = window.location.origin;
 let inspectMode = false;
 
 function sendToPreview(msg) {

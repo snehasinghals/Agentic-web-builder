@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-function serveFolder(folderPath, port) {
+function serveFolder(folderPath) {
     const server = http.createServer((req, res) => {
         const filePath = path.join(folderPath, req.url === '/' ? 'index.html' : req.url);
         fs.readFile(filePath, (err, data) => {
@@ -17,19 +17,30 @@ function serveFolder(folderPath, port) {
             res.end(data);
         });
     });
-    return new Promise((resolve) => {
-        server.listen(port, () => resolve(server));
+
+    return new Promise((resolve, reject) => {
+        server.once('error', reject);          // <-- catch bind/listen failures
+        server.listen(0, () => {                // <-- 0 = OS picks a free port, no collisions
+            server.removeListener('error', reject);
+            resolve(server);
+        });
     });
 }
 
 async function auditSite(filePath) {
     const folderPath = path.dirname(filePath);
-    const port = 5051;
 
-    const server = await serveFolder(folderPath, port);
-    const chrome = await chromeLauncher.launch({ chromeFlags: ['--headless'] });
-
+    let server;
+    let chrome;
     try {
+        server = await serveFolder(folderPath);
+        const port = server.address().port;     // actual assigned port
+
+        chrome = await chromeLauncher.launch({
+            chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu'],
+            chromePath: process.env.CHROME_PATH || undefined
+        });
+
         const options = { logLevel: 'error', output: 'json', port: chrome.port };
         const runnerResult = await lighthouse(`http://localhost:${port}`, options);
 
@@ -44,10 +55,9 @@ async function auditSite(filePath) {
         console.log('Lighthouse scores:', scores);
         return { scores, fullReport: runnerResult.lhr };
     } finally {
-        await chrome.kill();
-        server.close();
+        if (chrome) { try { await chrome.kill(); } catch (e) { console.warn('[Lighthouse] chrome.kill failed:', e.message); } }
+        if (server) { try { server.close(); } catch (e) { console.warn('[Lighthouse] server.close failed:', e.message); } }
     }
 }
 
 module.exports = { auditSite };
-
