@@ -1,6 +1,4 @@
-// backend/src/server.js
-
-// ─── Crash guards: MUST be first, before any other code ───
+// ─── Crash guards: MUST be first ───
 process.on('uncaughtException', (err) => {
   console.error('[FATAL — recovered] Uncaught exception:', err);
 });
@@ -8,7 +6,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[FATAL — recovered] Unhandled rejection:', reason);
 });
-// ─────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────────────────
 
 const http = require('http');
 const fs = require('fs');
