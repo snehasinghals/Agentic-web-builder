@@ -4,7 +4,6 @@
   "main": "backend/src/server.js",
   "scripts": {
     "start": "node backend/src/server.js",
-    "postinstall": "npx playwright install chromium",
     "dev": "node backend/src/server.js",
     "cli": "node backend/src/cli.js",
     "test": "echo \"Error: no test specified\" && exit 1"
