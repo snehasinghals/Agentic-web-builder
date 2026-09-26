@@ -1,10 +1,7 @@
-const chromeLauncher = require('chrome-launcher');
+const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-
-// lighthouse.js
-const { chromium } = require('playwright');
 
 function serveFolder(folderPath) {
     const server = http.createServer((req, res) => {
@@ -21,8 +18,8 @@ function serveFolder(folderPath) {
     });
 
     return new Promise((resolve, reject) => {
-        server.once('error', reject);          // <-- catch bind/listen failures
-        server.listen(0, () => {                // <-- 0 = OS picks a free port, no collisions
+        server.once('error', reject);
+        server.listen(0, () => {
             server.removeListener('error', reject);
             resolve(server);
         });
@@ -35,17 +32,22 @@ async function auditSite(filePath) {
     const folderPath = path.dirname(filePath);
 
     let server;
-    let chrome;
+    let browser;
     try {
         server = await serveFolder(folderPath);
-        const port = server.address().port;     // actual assigned port
+        const port = server.address().port;
 
-        chrome = await chromeLauncher.launch({
-            chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu'],
-            chromePath: process.env.CHROME_PATH || undefined
+        const debugPort = 9222;
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-gpu',
+                `--remote-debugging-port=${debugPort}`
+            ]
         });
 
-        const options = { logLevel: 'error', output: 'json', port: chrome.port };
+        const options = { logLevel: 'error', output: 'json', port: debugPort };
         const runnerResult = await lighthouse(`http://localhost:${port}`, options);
 
         const categories = runnerResult.lhr.categories;
@@ -59,7 +61,7 @@ async function auditSite(filePath) {
         console.log('Lighthouse scores:', scores);
         return { scores, fullReport: runnerResult.lhr };
     } finally {
-        if (chrome) { try { await chrome.kill(); } catch (e) { console.warn('[Lighthouse] chrome.kill failed:', e.message); } }
+        if (browser) { try { await browser.close(); } catch (e) { console.warn('[Lighthouse] browser.close failed:', e.message); } }
         if (server) { try { server.close(); } catch (e) { console.warn('[Lighthouse] server.close failed:', e.message); } }
     }
 }
