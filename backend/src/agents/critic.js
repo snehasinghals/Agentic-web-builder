@@ -39,16 +39,17 @@ async function runCriticAgent(siteName,signal) {
   }
 
   // 2. Run Lighthouse audit directly
-  let lighthouseResult = null;
+  let lighthouseResult = {
+    scores: { performance: 0, accessibility: 0, bestPractices: 0, seo: 0 },
+    fullReport: {}
+  };
   try {
     lighthouseResult = await auditSite(filePath);
   } catch (err) {
-    console.warn('[Critic Agent] Lighthouse audit skipped or failed:', err.message);
+    console.warn('[Critic Agent] Lighthouse audit error:', err.message);
   }
 
-  // If Lighthouse ran successfully, use its scores. If it failed (e.g. low-memory environment like Render),
-  // fallback to a passing baseline so Playwright's inspection governs quality instead of causing an infinite loop.
-  const scores = lighthouseResult?.scores || { performance: 85, accessibility: 85, bestPractices: 85, seo: 85 };
+  const scores = lighthouseResult.scores || { performance: 0, accessibility: 0, bestPractices: 0, seo: 0 };
   const rawRuntimeErrors = [
     ...(playwrightResult.pageErrors || []),
     ...(playwrightResult.consoleErrors || [])
