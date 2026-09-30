@@ -2,46 +2,58 @@ const { chromium } = require('playwright');
 const path = require('path');
 
 async function verifySite(filePath, { retries = 2 } = {}) {
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-
-    const consoleErrors = [];
-    const pageErrors = [];
-
-    page.on('console', msg => {
-        if (msg.type() === 'error') {
-            consoleErrors.push(msg.text());
-        }
+    const browser = await chromium.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--disable-software-rasterizer',
+            '--js-flags=--max-old-space-size=128'
+        ]
     });
 
-    page.on('pageerror', err => {
-        pageErrors.push(err.message);
-    });
+    try {
+        const page = await browser.newPage();
 
-    // Tell our safety-net script to stay OFF, so we can see the real bugs
-    await page.addInitScript(() => { window.__SKIP_SAFETY_NET__ = true; });
+        const consoleErrors = [];
+        const pageErrors = [];
 
-    const fileUrl = 'file://' + path.resolve(filePath).replace(/\\/g, '/');
+        page.on('console', msg => {
+            if (msg.type() === 'error') {
+                consoleErrors.push(msg.text());
+            }
+        });
 
-    let lastErr;
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-            // wait for React/Babel to render at least one section
-            await page.waitForSelector('section', { timeout: 8000 }).catch(() => {});
-            await page.waitForTimeout(2000);
-            lastErr = null;
-            break;
-        } catch (err) {
-            lastErr = err;
-            console.warn(`[Playwright] Attempt ${attempt}/${retries} failed: ${err.message}`);
+        page.on('pageerror', err => {
+            pageErrors.push(err.message);
+        });
+
+        // Tell our safety-net script to stay OFF, so we can see the real bugs
+        await page.addInitScript(() => { window.__SKIP_SAFETY_NET__ = true; });
+
+        const fileUrl = 'file://' + path.resolve(filePath).replace(/\\/g, '/');
+
+        let lastErr;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                await page.goto(fileUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                // wait for React/Babel to render at least one section
+                await page.waitForSelector('section', { timeout: 8000 }).catch(() => {});
+                await page.waitForTimeout(2000);
+                lastErr = null;
+                break;
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[Playwright] Attempt ${attempt}/${retries} failed: ${err.message}`);
+            }
         }
-    }
 
-    if (lastErr) {
-        await browser.close();
-        throw lastErr;
-    }
+        if (lastErr) {
+            throw lastErr;
+        }
 
     // ---- VISIBILITY CHECK ----
     let visibilityIssues = [];
@@ -120,15 +132,16 @@ async function verifySite(filePath, { retries = 2 } = {}) {
         console.warn('[Playwright] Visibility check failed:', err.message);
     }
 
-    const title = await page.title();
-    await browser.close();
-
-    console.log(`[Playwright] Verified page loads in-memory. Title: "${title}". Errors: ${pageErrors.length}. Visibility issues: ${visibilityIssues.length}`);
-    return {
-        title,
-        pageErrors,
-        consoleErrors,
-        visibilityIssues
-    };
+        const title = await page.title();
+        console.log(`[Playwright] Verified page loads in-memory. Title: "${title}". Errors: ${pageErrors.length}. Visibility issues: ${visibilityIssues.length}`);
+        return {
+            title,
+            pageErrors,
+            consoleErrors,
+            visibilityIssues
+        };
+    } finally {
+        await browser.close().catch(() => {});
+    }
 }
 module.exports = { verifySite };

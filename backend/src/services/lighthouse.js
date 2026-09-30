@@ -49,11 +49,41 @@ async function auditSite(filePath) {
 
         chrome = await chromeLauncher.launch({
             chromePath,
-            chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu']
-            
+            chromeFlags: [
+                '--headless',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-extensions',
+                '--disable-software-rasterizer',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--metrics-recording-only',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--js-flags=--max-old-space-size=128'
+            ]
         });
 
-        const options = { logLevel: 'error', output: 'json', port: chrome.port };
+        const options = {
+            logLevel: 'error',
+            output: 'json',
+            port: chrome.port,
+            onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+            skipAudits: [
+                'full-page-screenshot',
+                'screenshot-thumbnails',
+                'final-screenshot'
+            ],
+            formFactor: 'desktop',
+            screenEmulation: { disabled: true },
+            throttlingMethod: 'provided'
+        };
         const runnerResult = await lighthouse(`http://localhost:${port}`, options);
 
         const categories = runnerResult.lhr.categories;

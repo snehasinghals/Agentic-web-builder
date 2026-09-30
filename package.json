@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "backend/src/server.js",
   "scripts": {
-    "start": "node backend/src/server.js",
+    "start": "node --max-old-space-size=256 backend/src/server.js",
     "dev": "node backend/src/server.js",
     "cli": "node backend/src/cli.js",
     "test": "echo \"Error: no test specified\" && exit 1"
