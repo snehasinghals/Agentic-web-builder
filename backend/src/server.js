@@ -46,6 +46,19 @@ setWorkflowEventEmitter(workflowEvents);
 // Track connected SSE dashboard clients
 let sseClients = [];
 
+// Send periodic keep-alive ping every 15s to keep connections open through cloud proxies (Render, Cloudflare, Nginx)
+setInterval(() => {
+  sseClients.forEach(client => {
+    try {
+      client.write(': ping\n\n');
+    } catch (e) {
+      // client disconnected
+    }
+  });
+}, 15000);
+
+
+
 // Track in-flight runs per site so /api/stop can actually cancel them
 const activeRuns = new Map(); // siteName -> { controller: AbortController }
 
@@ -169,8 +182,9 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/stream' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
     });
     res.write('data: {"type":"connected"}\n\n');
     sseClients.push(res);
@@ -466,7 +480,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n======================================================`);
   console.log(`🚀 Multi-Agent AI Website Builder Dashboard Ready!`);
   console.log(`======================================================`);
