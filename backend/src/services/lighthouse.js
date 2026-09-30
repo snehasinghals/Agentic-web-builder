@@ -2,6 +2,8 @@ const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const chromeLauncher = require('chrome-launcher');
+
 
 function serveFolder(folderPath) {
     const server = http.createServer((req, res) => {
@@ -33,21 +35,25 @@ async function auditSite(filePath) {
 
     let server;
     let browser;
+    let chrome;
     try {
         server = await serveFolder(folderPath);
         const port = server.address().port;
 
-        const debugPort = 9222;
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-gpu',
-                `--remote-debugging-port=${debugPort}`
-            ]
+        let chromePath;
+        try {
+            chromePath = chromium.executablePath();
+        } catch (e) {
+            // fallback to default detected Chrome
+        }
+
+        chrome = await chromeLauncher.launch({
+            chromePath,
+            chromeFlags: ['--headless', '--no-sandbox', '--disable-gpu']
+            
         });
 
-        const options = { logLevel: 'error', output: 'json', port: debugPort };
+        const options = { logLevel: 'error', output: 'json', port: chrome.port };
         const runnerResult = await lighthouse(`http://localhost:${port}`, options);
 
         const categories = runnerResult.lhr.categories;
@@ -61,7 +67,7 @@ async function auditSite(filePath) {
         console.log('Lighthouse scores:', scores);
         return { scores, fullReport: runnerResult.lhr };
     } finally {
-        if (browser) { try { await browser.close(); } catch (e) { console.warn('[Lighthouse] browser.close failed:', e.message); } }
+        if (chrome) { try { await chrome.kill(); } catch (e) { console.warn('[Lighthouse] chrome.kill failed:', e.message); } }
         if (server) { try { server.close(); } catch (e) { console.warn('[Lighthouse] server.close failed:', e.message); } }
     }
 }
