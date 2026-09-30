@@ -889,13 +889,9 @@ function hideRefineOverlay() {
 }
 
 function setupSSE() {
-  if (sseSource) {
-    try { sseSource.close(); } catch (e) {}
-    sseSource = null;
-  }
+  const evtSource = new EventSource('/api/stream');
 
-  sseSource = new EventSource('/api/stream');
-  sseSource.onmessage = (event) => {
+  evtSource.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
       handleWorkflowEvent(payload.type, payload.data);
@@ -904,14 +900,8 @@ function setupSSE() {
     }
   };
 
-  sseSource.onerror = () => {
-    // EventSource handles reconnection natively for temporary hiccups.
-    // If the connection was permanently closed (CLOSED = 2), clean up and retry after 5s.
-    if (sseSource && sseSource.readyState === EventSource.CLOSED) {
-      try { sseSource.close(); } catch (e) {}
-      sseSource = null;
-      setTimeout(setupSSE, 5000);
-    }
+  evtSource.onerror = () => {
+    setTimeout(setupSSE, 3000);
   };
 }
 
